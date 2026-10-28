@@ -6,7 +6,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDroppable,
   useSensor,
   useSensors,
@@ -24,14 +25,15 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { summarizeTeam } from "@/lib/balance";
 import { positionSummary, teamStyle } from "@/lib/teams";
-import { formatRating, type Player } from "@/lib/types";
-import { PositionTags, RatingBadge } from "./ui";
+import { formatRating, POSITION_EMOJI, type Player } from "@/lib/types";
+import { ratingColor } from "./ui";
 
 const containerId = (i: number) => `team-${i}`;
 
 /**
- * Team cards with drag & drop: drag a player by its handle to reorder within a team or move it to another team.
- * Tapping a player still selects it for a quick swap (handled by the parent through onTap).
+ * The three teams side by side as columns, so the whole split fits a portrait phone screen.
+ * Long-press (touch) or drag (mouse) a player to reorder it or move it to another team;
+ * a short tap still selects it for a quick swap (handled by the parent through onTap).
  */
 export function TeamBoard({
   teams,
@@ -51,7 +53,9 @@ export function TeamBoard({
   const ids = dragIds ?? teams.map((t) => t.map((p) => p.id));
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    // Long press on touch, so a normal swipe still scrolls the page.
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -104,7 +108,7 @@ export function TeamBoard({
         setActiveId(null);
       }}
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-3 items-start gap-1.5">
         {ids.map((teamIds, i) => (
           <TeamCard
             key={i}
@@ -138,22 +142,21 @@ function TeamCard({
   const s = summarizeTeam(players);
   const { setNodeRef, isOver } = useDroppable({ id: containerId(index) });
   return (
-    <section className={`overflow-hidden rounded-3xl bg-white shadow-sm ${isOver ? "ring-2 ring-emerald-500" : ""}`}>
-      <div className={`flex items-center justify-between px-4 py-3 ${style.header}`}>
-        <h2 className="flex items-center gap-2 text-lg font-black">
-          <span className={`h-4 w-4 rounded-full ${style.swatch}`} />
+    <section className={`min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm ${isOver ? "ring-2 ring-emerald-500" : ""}`}>
+      <div className={`px-2 py-2 text-center ${style.header}`}>
+        <h2 className="flex items-center justify-center gap-1.5 text-base font-black">
+          <span className={`h-3 w-3 shrink-0 rounded-full ${style.swatch}`} />
           {style.name}
         </h2>
-        <div className="text-end text-sm leading-tight">
-          <div className="font-bold">סה״כ {formatRating(s.total)}</div>
-          <div className="opacity-75">ממוצע {s.average.toFixed(2)}</div>
+        <div className="text-xs leading-tight">
+          <b>{formatRating(s.total)}</b> · <span className="opacity-75">{s.average.toFixed(2)}</span>
         </div>
       </div>
-      <div className="border-b border-zinc-100 px-4 py-1.5 text-xs text-zinc-500">
-        {players.length} שחקנים · {positionSummary(players) || "ללא תפקידים"}
+      <div className="border-b border-zinc-100 px-1 py-1 text-center text-[11px] leading-tight text-zinc-500">
+        {positionSummary(players) ? `${players.length} · ${positionSummary(players)}` : `${players.length} שחקנים`}
       </div>
       <SortableContext id={containerId(index)} items={players.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-        <ul ref={setNodeRef} className="min-h-12">
+        <ul ref={setNodeRef} className="min-h-16 divide-y divide-zinc-50">
           {players.map((p) => (
             <SortablePlayer key={p.id} player={p} picked={picked} dragging={activeId === p.id} onTap={onTap} />
           ))}
@@ -174,44 +177,36 @@ function SortablePlayer({
   dragging: boolean;
   onTap(id: string): void;
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition } = useSortable({ id: player.id });
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: player.id });
   return (
     <li
       ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`flex items-center ${dragging ? "opacity-30" : ""} ${picked === player.id ? "bg-amber-100" : ""}`}
+      style={{ transform: CSS.Translate.toString(transform), transition, WebkitTouchCallout: "none" }}
+      {...attributes}
+      {...listeners}
+      onClick={() => onTap(player.id)}
+      aria-label={player.name}
+      className={`cursor-grab select-none ${dragging ? "opacity-30" : ""} ${picked === player.id ? "bg-amber-100" : "active:bg-zinc-50"}`}
     >
-      <button
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        className="cursor-grab touch-none self-stretch ps-3 pe-1 text-lg text-zinc-300 active:text-emerald-700"
-        aria-label={`גרירת ${player.name}`}
-      >
-        ⠿
-      </button>
-      <button onClick={() => onTap(player.id)} className="flex min-w-0 flex-1 items-center gap-3 py-2 ps-1 pe-4 text-start active:bg-zinc-50">
-        <PlayerRowContent player={player} />
-      </button>
+      <PlayerRow player={player} />
     </li>
   );
 }
 
 function PlayerRow({ player, overlay }: { player: Player; overlay?: boolean }) {
+  const main = player.positions[0];
   return (
-    <div className={`flex items-center gap-3 rounded-xl bg-white px-4 py-2 ${overlay ? "shadow-xl ring-2 ring-emerald-500" : ""}`} dir="rtl">
-      <span className="text-lg text-emerald-700">⠿</span>
-      <PlayerRowContent player={player} />
+    <div
+      dir="rtl"
+      className={`flex items-center gap-1 px-1.5 py-1.5 ${overlay ? "rounded-lg bg-white shadow-xl ring-2 ring-emerald-500" : ""}`}
+    >
+      <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-4 font-semibold break-words">
+        {main && <span className="me-0.5 text-[11px]">{POSITION_EMOJI[main]}</span>}
+        {player.name}
+      </span>
+      <span className={`shrink-0 rounded-md px-1 text-xs leading-5 font-bold tabular-nums ${ratingColor(player.rating)}`}>
+        {formatRating(player.rating)}
+      </span>
     </div>
-  );
-}
-
-function PlayerRowContent({ player }: { player: Player }) {
-  return (
-    <>
-      <span className="min-w-0 flex-1 truncate font-semibold">{player.name}</span>
-      {player.positions.length > 0 && <PositionTags positions={player.positions.slice(0, 1)} />}
-      <RatingBadge rating={player.rating} />
-    </>
   );
 }
