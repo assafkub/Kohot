@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "./AppProvider";
 import { btn, input, PositionPicker, RatingBadge, RatingPicker, Sheet } from "./ui";
-import { normalizeName, parsePlayerList } from "@/lib/parseList";
+import { matchPlayer, parsePlayerList } from "@/lib/parseList";
 import { DEFAULT_RATING, type Player, type Position } from "@/lib/types";
 
 export function PlayerFormSheet({ open, player, onClose }: { open: boolean; player: Player | null; onClose(): void }) {
@@ -102,12 +102,13 @@ export function PasteListSheet({
   const [busy, setBusy] = useState(false);
 
   const { matched, fresh } = useMemo(() => {
-    const byName = new Map(players.map((p) => [normalizeName(p.name), p]));
     const matched: Player[] = [];
     const fresh: { name: string; rating: number }[] = [];
     for (const line of parsePlayerList(text)) {
-      const existing = byName.get(normalizeName(line.name));
-      if (existing) matched.push(existing);
+      const existing = matchPlayer(line.name, players);
+      if (existing) {
+        if (!matched.includes(existing)) matched.push(existing);
+      }
       else fresh.push({ name: line.name, rating: line.rating ?? DEFAULT_RATING });
     }
     return { matched, fresh };

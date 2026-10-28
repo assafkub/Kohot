@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import { useApp } from "@/components/AppProvider";
 import { PasteListSheet, PlayerFormSheet } from "@/components/PlayerSheets";
 import { QuickAdd } from "@/components/QuickAdd";
+import { TeamBoard } from "@/components/TeamBoard";
 import { btn, input, PositionTags, RatingBadge, Spinner } from "@/components/ui";
 import { balanceTeams, summarizeTeam, teamSizes } from "@/lib/balance";
 import { normalizeName } from "@/lib/parseList";
 import { readStored, writeStored } from "@/lib/storage";
-import { positionSummary, shareText, teamStyle } from "@/lib/teams";
-import { formatRating, type Player, type SavedTeam } from "@/lib/types";
+import { shareText, teamStyle } from "@/lib/teams";
+import type { Player, SavedTeam } from "@/lib/types";
 
 // Always three teams of 7; with fewer players some teams get 6.
 const TEAM_COUNT = 3;
@@ -305,50 +306,12 @@ function TeamsView({
       </header>
 
       <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-        {picked ? "עכשיו לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם" : "רוצים להחליף שחקנים? לחצו על שחקן ואז על שחקן מקבוצה אחרת."}
+        {picked
+          ? "עכשיו לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם"
+          : "שינויים ידניים: גררו שחקן בידית ⠿ למקום אחר או לקבוצה אחרת, או לחצו על שני שחקנים מקבוצות שונות כדי להחליף ביניהם."}
       </p>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {teams.map((players, i) => {
-          const style = teamStyle(i);
-          const s = summaries[i];
-          return (
-            <section key={i} className="overflow-hidden rounded-3xl bg-white shadow-sm">
-              <div className={`flex items-center justify-between px-4 py-3 ${style.header}`}>
-                <h2 className="flex items-center gap-2 text-lg font-black">
-                  <span className={`h-4 w-4 rounded-full ${style.swatch}`} />
-                  {style.name}
-                </h2>
-                <div className="text-end text-sm leading-tight">
-                  <div className="font-bold">סה״כ {formatRating(s.total)}</div>
-                  <div className="opacity-75">ממוצע {s.average.toFixed(2)}</div>
-                </div>
-              </div>
-              <div className="border-b border-zinc-100 px-4 py-1.5 text-xs text-zinc-500">
-                {players.length} שחקנים · {positionSummary(players) || "ללא תפקידים"}
-              </div>
-              <ul>
-                {players.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      onClick={() => tapPlayer(p.id)}
-                      className={`flex w-full items-center gap-3 px-4 py-2 text-start ${
-                        picked === p.id ? "bg-amber-100" : picked ? "active:bg-emerald-50" : "active:bg-zinc-50"
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold">{p.name}</span>
-                      </span>
-                      {p.positions.length > 0 && <PositionTags positions={p.positions.slice(0, 1)} />}
-                      <RatingBadge rating={p.rating} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })}
-      </div>
+      <TeamBoard teams={teams} picked={picked} onTap={tapPlayer} onChange={onChange} />
 
       <div className="pb-safe fixed inset-x-0 bottom-16 z-20 border-t border-zinc-200 bg-white/95 px-4 pt-3 backdrop-blur">
         <div className="mx-auto grid max-w-lg grid-cols-3 gap-2">

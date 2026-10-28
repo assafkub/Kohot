@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { balanceTeams, teamSizes, type BalancePlayer } from "./balance";
-import { parsePlayerList } from "./parseList";
+import { matchPlayer, parsePlayerList } from "./parseList";
 import type { Position } from "./types";
 
 function seeded(seed: number) {
@@ -70,12 +70,57 @@ describe("balanceTeams", () => {
 
 describe("parsePlayerList", () => {
   it("parses a WhatsApp style list", () => {
-    const parsed = parsePlayerList("1. אסף ✅\n2) דני 5.5\n- יוסי - 3\n\nאסף\nמשה כהן");
+    const parsed = parsePlayerList("1. אסף ✅\n2) דני 5.5\n- יוסי - 3\n4. אסף\n5. משה כהן");
     expect(parsed).toEqual([
       { name: "אסף" },
       { name: "דני", rating: 5.5 },
       { name: "יוסי", rating: 3 },
       { name: "משה כהן" },
     ]);
+  });
+
+  it("cleans a shared teams message with notes, guests and titles", () => {
+    const text = `⚽ הכוחות להיום – 28.10
+
+⚪ *לבנים* (28)
+• אסי *שולם*
+• יוסף כ *שולם*
+• כלפון חדפ (אלמוג ) *שולם*
+• ערן חדפ (מתן)
+• תומר בכפוף למבחן כשירות *שולם*
+
+⚫ *שחורים* (28)
+• דור און  *שולם*
+• אביב דהן חדפ *שולם*
+• דור ב *שולם*
+• שחף *שולם* 
+• לתשלום בפייבוקס: https://links.payboxapp.com/AbC123
+• payboxapp.com/xyz
+https://chat.whatsapp.com/abc`;
+    expect(parsePlayerList(text).map((p) => p.name)).toEqual([
+      "אסי",
+      "יוסף כ",
+      "כלפון חדפ",
+      "ערן חדפ",
+      "תומר",
+      "דור און",
+      "אביב דהן חדפ",
+      "דור ב",
+      "שחף",
+    ]);
+  });
+
+  it("parses a plain list without bullets", () => {
+    expect(parsePlayerList("אסף\nדני 5.5\nhttps://x.com/y").map((p) => p.name)).toEqual(["אסף", "דני"]);
+  });
+});
+
+describe("matchPlayer", () => {
+  const players = [{ name: "אביב דהן" }, { name: "דור א" }, { name: "דור ב" }];
+  it("matches exact and unique first-name prefixes only", () => {
+    expect(matchPlayer("אביב", players)?.name).toBe("אביב דהן");
+    expect(matchPlayer("דור ב", players)?.name).toBe("דור ב");
+    expect(matchPlayer("דור", players)).toBeUndefined();
+    expect(matchPlayer("דור ג", players)).toBeUndefined();
   });
 });
