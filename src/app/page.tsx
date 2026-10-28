@@ -308,7 +308,7 @@ function TeamsView({
       <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
         {picked
           ? "עכשיו לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם"
-          : "שינויים ידניים: לחיצה ארוכה על שחקן וגרירה לקבוצה אחרת, או לחיצה על שני שחקנים מקבוצות שונות כדי להחליף ביניהם."}
+          : "החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם."}
       </p>
 
       <TeamBoard teams={teams} picked={picked} onTap={tapPlayer} onChange={onChange} />

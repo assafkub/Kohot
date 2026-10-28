@@ -32,7 +32,7 @@ const containerId = (i: number) => `team-${i}`;
 
 /**
  * The three teams side by side as columns, so the whole split fits a portrait phone screen.
- * Long-press (touch) or drag (mouse) a player to reorder it or move it to another team;
+ * Long-press (touch) or drag (mouse) a player: within its team it reorders, onto a player of another team it swaps them;
  * a short tap still selects it for a quick swap (handled by the parent through onTap).
  */
 export function TeamBoard({
@@ -47,10 +47,9 @@ export function TeamBoard({
   onChange(teams: Player[][]): void;
 }) {
   const byId = new Map(teams.flat().map((p) => [p.id, p]));
-  // While dragging we work on a local copy of the ids, committed on drop.
-  const [dragIds, setDragIds] = useState<string[][] | null>(null);
+  const ids = teams.map((t) => t.map((p) => p.id));
   const [activeId, setActiveId] = useState<string | null>(null);
-  const ids = dragIds ?? teams.map((t) => t.map((p) => p.id));
+  const [overId, setOverId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -59,39 +58,36 @@ export function TeamBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const findTeam = (id: string, list = ids) =>
-    id.startsWith("team-") ? Number(id.slice(5)) : list.findIndex((t) => t.includes(id));
+  const findTeam = (id: string) => ids.findIndex((t) => t.includes(id));
+  // Dropping on a player of another team swaps the two, so team sizes never change.
+  const swapTarget =
+    activeId && overId && findTeam(overId) >= 0 && findTeam(overId) !== findTeam(activeId) ? overId : null;
 
-  const onDragStart = ({ active }: DragStartEvent) => {
-    setActiveId(String(active.id));
-    setDragIds(ids.map((t) => t.slice()));
+  const reset = () => {
+    setActiveId(null);
+    setOverId(null);
   };
 
-  const onDragOver = ({ active, over }: DragOverEvent) => {
-    if (!over || !dragIds) return;
-    const from = findTeam(String(active.id), dragIds);
-    const to = findTeam(String(over.id), dragIds);
-    if (from < 0 || to < 0 || from === to) return;
-    const next = dragIds.map((t) => t.slice());
-    next[from] = next[from].filter((id) => id !== active.id);
-    const overIndex = next[to].indexOf(String(over.id));
-    next[to].splice(overIndex < 0 ? next[to].length : overIndex, 0, String(active.id));
-    setDragIds(next);
-  };
+  const onDragStart = ({ active }: DragStartEvent) => setActiveId(String(active.id));
+  const onDragOver = ({ over }: DragOverEvent) => setOverId(over ? String(over.id) : null);
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
-    let next = dragIds ?? ids;
-    if (over) {
-      const team = findTeam(String(active.id), next);
-      const oldIndex = next[team].indexOf(String(active.id));
-      const newIndex = next[team].indexOf(String(over.id));
-      if (newIndex >= 0 && newIndex !== oldIndex) {
-        next = next.map((t, i) => (i === team ? arrayMove(t, oldIndex, newIndex) : t));
-      }
-      onChange(next.map((t) => t.map((id) => byId.get(id)!)));
+    reset();
+    if (!over) return;
+    const a = String(active.id);
+    const o = String(over.id);
+    const from = findTeam(a);
+    const to = findTeam(o);
+    if (from < 0 || to < 0 || a === o) return;
+    const next = ids.map((t) => t.slice());
+    if (from === to) {
+      next[from] = arrayMove(next[from], next[from].indexOf(a), next[from].indexOf(o));
+    } else {
+      const ai = next[from].indexOf(a);
+      const oi = next[to].indexOf(o);
+      [next[from][ai], next[to][oi]] = [o, a];
     }
-    setDragIds(null);
-    setActiveId(null);
+    onChange(next.map((t) => t.map((id) => byId.get(id)!)));
   };
 
   const active = activeId ? byId.get(activeId) : undefined;
@@ -103,10 +99,7 @@ export function TeamBoard({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
-      onDragCancel={() => {
-        setDragIds(null);
-        setActiveId(null);
-      }}
+      onDragCancel={reset}
     >
       <div className="grid grid-cols-3 items-start gap-1.5">
         {ids.map((teamIds, i) => (
@@ -116,6 +109,7 @@ export function TeamBoard({
             players={teamIds.map((id) => byId.get(id)!)}
             picked={picked}
             activeId={activeId}
+            swapTarget={swapTarget}
             onTap={onTap}
           />
         ))}
@@ -130,19 +124,21 @@ function TeamCard({
   players,
   picked,
   activeId,
+  swapTarget,
   onTap,
 }: {
   index: number;
   players: Player[];
   picked: string | null;
   activeId: string | null;
+  swapTarget: string | null;
   onTap(id: string): void;
 }) {
   const style = teamStyle(index);
   const s = summarizeTeam(players);
-  const { setNodeRef, isOver } = useDroppable({ id: containerId(index) });
+  const { setNodeRef } = useDroppable({ id: containerId(index) });
   return (
-    <section className={`min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm ${isOver ? "ring-2 ring-emerald-500" : ""}`}>
+    <section className={`min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm `}>
       <div className={`px-2 py-2 text-center ${style.header}`}>
         <h2 className="flex items-center justify-center gap-1.5 text-base font-black">
           <span className={`h-3 w-3 shrink-0 rounded-full ${style.swatch}`} />
@@ -158,7 +154,14 @@ function TeamCard({
       <SortableContext id={containerId(index)} items={players.map((p) => p.id)} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="min-h-16 divide-y divide-zinc-50">
           {players.map((p) => (
-            <SortablePlayer key={p.id} player={p} picked={picked} dragging={activeId === p.id} onTap={onTap} />
+            <SortablePlayer
+              key={p.id}
+              player={p}
+              picked={picked}
+              dragging={activeId === p.id}
+              swapTarget={swapTarget === p.id}
+              onTap={onTap}
+            />
           ))}
         </ul>
       </SortableContext>
@@ -170,11 +173,13 @@ function SortablePlayer({
   player,
   picked,
   dragging,
+  swapTarget,
   onTap,
 }: {
   player: Player;
   picked: string | null;
   dragging: boolean;
+  swapTarget: boolean;
   onTap(id: string): void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: player.id });
@@ -186,7 +191,7 @@ function SortablePlayer({
       {...listeners}
       onClick={() => onTap(player.id)}
       aria-label={player.name}
-      className={`cursor-grab select-none ${dragging ? "opacity-30" : ""} ${picked === player.id ? "bg-amber-100" : "active:bg-zinc-50"}`}
+      className={`cursor-grab select-none ${dragging ? "opacity-30" : ""} ${swapTarget ? "bg-emerald-100 ring-2 ring-emerald-500 ring-inset" : picked === player.id ? "bg-amber-100" : "active:bg-zinc-50"}`}
     >
       <PlayerRow player={player} />
     </li>
@@ -198,7 +203,7 @@ function PlayerRow({ player, overlay }: { player: Player; overlay?: boolean }) {
   return (
     <div
       dir="rtl"
-      className={`flex items-center gap-1 px-1.5 py-1.5 ${overlay ? "rounded-lg bg-white shadow-xl ring-2 ring-emerald-500" : ""}`}
+      className={`flex items-center gap-1 px-1.5 py-1.5 ${overlay ? "rounded-lg bg-white/85 shadow-xl ring-2 ring-emerald-500" : ""}`}
     >
       <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-4 font-semibold break-words">
         {main && <span className="me-0.5 text-[11px]">{POSITION_EMOJI[main]}</span>}
