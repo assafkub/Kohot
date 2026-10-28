@@ -39,11 +39,6 @@ export function teamSizes(playerCount: number, teamCount: number): number[] {
   return Array.from({ length: teamCount }, (_, i) => base + (i < extra ? 1 : 0));
 }
 
-/** 7 a side by default: 14 → 2 teams, 21 → 3, 28 → 4. */
-export function suggestTeamCount(playerCount: number): number {
-  return Math.max(2, Math.round(playerCount / 7));
-}
-
 function shuffle<T>(items: T[], rng: () => number): T[] {
   const a = items.slice();
   for (let i = a.length - 1; i > 0; i--) {

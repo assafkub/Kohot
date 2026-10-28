@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { balanceTeams, suggestTeamCount, teamSizes, type BalancePlayer } from "./balance";
+import { balanceTeams, teamSizes, type BalancePlayer } from "./balance";
 import { parsePlayerList } from "./parseList";
 import type { Position } from "./types";
 
@@ -21,25 +21,22 @@ function makePlayers(count: number, seed = 1): BalancePlayer[] {
   }));
 }
 
-describe("teamSizes / suggestTeamCount", () => {
+describe("teamSizes", () => {
   it("splits evenly with remainder spread", () => {
     expect(teamSizes(14, 2)).toEqual([7, 7]);
-    expect(teamSizes(22, 3)).toEqual([8, 7, 7]);
-  });
-  it("suggests 7-a-side", () => {
-    expect(suggestTeamCount(14)).toBe(2);
-    expect(suggestTeamCount(21)).toBe(3);
-    expect(suggestTeamCount(9)).toBe(2);
+    expect(teamSizes(21, 3)).toEqual([7, 7, 7]);
+    expect(teamSizes(20, 3)).toEqual([7, 7, 6]);
+    expect(teamSizes(19, 3)).toEqual([7, 6, 6]);
   });
 });
 
 describe("balanceTeams", () => {
   it("keeps every player exactly once and balances totals", () => {
     for (const [n, k] of [
-      [14, 2],
       [21, 3],
-      [28, 4],
-      [17, 2],
+      [20, 3],
+      [19, 3],
+      [14, 2],
     ]) {
       const players = makePlayers(n, n);
       const { teams } = balanceTeams(players, k, { rng: seeded(42) });

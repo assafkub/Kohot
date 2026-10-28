@@ -5,11 +5,15 @@ import { useApp } from "@/components/AppProvider";
 import { PasteListSheet, PlayerFormSheet } from "@/components/PlayerSheets";
 import { QuickAdd } from "@/components/QuickAdd";
 import { btn, input, PositionTags, RatingBadge, Spinner } from "@/components/ui";
-import { balanceTeams, suggestTeamCount, summarizeTeam, teamSizes } from "@/lib/balance";
+import { balanceTeams, summarizeTeam, teamSizes } from "@/lib/balance";
 import { normalizeName } from "@/lib/parseList";
 import { readStored, writeStored } from "@/lib/storage";
 import { positionSummary, shareText, teamStyle } from "@/lib/teams";
 import { formatRating, type Player, type SavedTeam } from "@/lib/types";
+
+// Always three teams of 7; with fewer players some teams get 6.
+const TEAM_COUNT = 3;
+const FULL_TEAM = 7;
 
 interface StoredResult {
   key: string;
@@ -30,7 +34,6 @@ function Today({ groupId }: { groupId: string }) {
   const [selected, setSelectedState] = useState<Set<string>>(() => new Set(readStored<string[]>(attendanceKey, [])));
   const [result, setResultState] = useState<StoredResult | null>(() => readStored<StoredResult | null>(resultKey, null));
   const [view, setView] = useState<"pick" | "teams">(() => (result ? "teams" : "pick"));
-  const [teamCountChoice, setTeamCountChoice] = useState<number | null>(null);
 
   const setSelected = (next: Set<string>) => {
     setSelectedState(next);
@@ -43,10 +46,9 @@ function Today({ groupId }: { groupId: string }) {
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const comingPlayers = useMemo(() => players.filter((p) => selected.has(p.id)), [players, selected]);
-  const teamCount = teamCountChoice ?? suggestTeamCount(comingPlayers.length);
 
   const generate = (avoidKey?: string) => {
-    const res = balanceTeams(comingPlayers, teamCount, { avoidKey });
+    const res = balanceTeams(comingPlayers, TEAM_COUNT, { avoidKey });
     setResult({ key: res.key, teams: res.teams.map((t) => t.players.map((p) => p.id)) });
     setView("teams");
     window.scrollTo({ top: 0 });
@@ -77,8 +79,6 @@ function Today({ groupId }: { groupId: string }) {
     <PickView
       selected={selected}
       setSelected={setSelected}
-      teamCount={teamCount}
-      setTeamCount={setTeamCountChoice}
       onGenerate={() => generate(result?.key)}
       hasResult={Boolean(result)}
       onShowResult={() => setView("teams")}
@@ -89,16 +89,12 @@ function Today({ groupId }: { groupId: string }) {
 function PickView({
   selected,
   setSelected,
-  teamCount,
-  setTeamCount,
   onGenerate,
   hasResult,
   onShowResult,
 }: {
   selected: Set<string>;
   setSelected(next: Set<string>): void;
-  teamCount: number;
-  setTeamCount(n: number): void;
   onGenerate(): void;
   hasResult: boolean;
   onShowResult(): void;
@@ -112,9 +108,9 @@ function PickView({
   const count = players.filter((p) => selected.has(p.id)).length;
   const q = normalizeName(query);
   const visible = q ? active.filter((p) => normalizeName(p.name).includes(q)) : active;
-  const sizes = count >= teamCount ? teamSizes(count, teamCount) : [];
-  const sizeLabel = sizes.length ? [...new Set(sizes)].join("/") : "";
-  const canGenerate = count >= teamCount * 2;
+  const canGenerate = count >= TEAM_COUNT * 2;
+  const sizeLabel = canGenerate ? teamSizes(count, TEAM_COUNT).join("·") : "";
+  const missing = TEAM_COUNT * FULL_TEAM - count;
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -202,22 +198,21 @@ function PickView({
 
       <div className="pb-safe fixed inset-x-0 bottom-16 z-20 border-t border-zinc-200 bg-white/95 px-4 pt-3 backdrop-blur">
         <div className="mx-auto max-w-lg space-y-2">
-          <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="font-semibold text-zinc-600">מספר קבוצות</span>
-            <div className="flex gap-1.5">
-              {[2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setTeamCount(n)}
-                  className={`h-9 w-9 rounded-xl font-bold ${n === teamCount ? "bg-emerald-700 text-white" : "bg-zinc-100 text-zinc-700"}`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="text-center text-sm text-zinc-600">
+            {missing > 0 ? (
+              <>
+                <b>{count}</b> מתוך {TEAM_COUNT * FULL_TEAM} · חסרים {missing} ל-3 קבוצות מלאות
+              </>
+            ) : missing === 0 ? (
+              <span className="font-semibold text-emerald-700">✓ 21 שחקנים, 3 קבוצות של 7</span>
+            ) : (
+              <span className="font-semibold text-amber-700">
+                {count} שחקנים, {-missing} מעל 21 (יהיו קבוצות של 8)
+              </span>
+            )}
+          </p>
           <button className={`${btn.primary} w-full text-lg`} disabled={!canGenerate} onClick={onGenerate}>
-            {canGenerate ? `⚽ חלק ל-${teamCount} קבוצות (${sizeLabel})` : `בחרו לפחות ${teamCount * 2} שחקנים`}
+            {canGenerate ? `⚽ חלק ל-3 קבוצות (${sizeLabel})` : `בחרו לפחות ${TEAM_COUNT * 2} שחקנים`}
           </button>
         </div>
       </div>
