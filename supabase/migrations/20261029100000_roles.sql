@@ -41,6 +41,8 @@ $$;
 
 -- ---------- Published games ----------
 alter table public.games add column if not exists published_at timestamptz;
+-- Also in 20261029000000_game_title.sql; repeated here in case that one was not run.
+alter table public.games add column if not exists title text check (char_length(title) <= 60);
 
 -- ---------- Policies ----------
 drop policy if exists "members read group" on public.groups;
