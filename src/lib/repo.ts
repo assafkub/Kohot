@@ -27,6 +27,7 @@ export interface Repo {
   listGames(groupId: string): Promise<Game[]>;
   deleteGame(id: string): Promise<void>;
   deleteAllGames(groupId: string): Promise<void>;
+  /** Publishing a version unpublishes the other versions of the same day. */
   setGamePublished(id: string, published: boolean): Promise<Game>;
   /** What players see: published games, names and colors only. */
   listPublishedGames(groupId: string): Promise<PublishedGame[]>;
@@ -142,6 +143,10 @@ export const supabaseRepo: Repo = {
     if (error) throw friendlyError(error);
   },
   async setGamePublished(id, published) {
+    const rpc = await getSupabase().rpc("publish_game", { p_game: id, p_publish: published });
+    if (!rpc.error) return rpc.data as Game;
+    if (!isMissingFunction(rpc.error)) throw friendlyError(rpc.error);
+    // Before the versions migration: publish just this game.
     const { data, error } = await getSupabase()
       .from("games")
       .update({ published_at: published ? new Date().toISOString() : null })
@@ -320,6 +325,11 @@ export const localRepo: Repo = {
     return mutate((db) => {
       const g = db.games.find((x) => x.id === id);
       if (!g) throw new Error("המשחק לא נמצא");
+      if (published) {
+        for (const other of db.games) {
+          if (other.group_id === g.group_id && other.played_on === g.played_on) other.published_at = null;
+        }
+      }
       g.published_at = published ? new Date().toISOString() : null;
       return { ...g };
     });
