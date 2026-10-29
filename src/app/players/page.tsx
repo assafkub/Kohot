@@ -9,7 +9,7 @@ import { normalizeName } from "@/lib/parseList";
 import type { Player } from "@/lib/types";
 
 export default function PlayersPage() {
-  const { players, playersLoading, deletePlayers, toast } = useApp();
+  const { players, playersLoading, deletePlayers, toast, ask } = useApp();
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [query, setQuery] = useState("");
@@ -34,9 +34,15 @@ export default function PlayersPage() {
     setChecked(next);
   };
 
-  const removeChecked = () => {
+  const removeChecked = async () => {
     const ids = checkedVisible.map((p) => p.id);
-    if (!confirm(`למחוק ${ids.length} שחקנים מהמאגר? אי אפשר לבטל.`)) return;
+    const ok = await ask({
+      title: `למחוק ${ids.length} שחקנים?`,
+      message: "הם יימחקו מהמאגר, ואי אפשר לבטל.",
+      confirmLabel: "מחיקה",
+      danger: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     deletePlayers(ids)
       .then(() => {

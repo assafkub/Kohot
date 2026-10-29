@@ -100,7 +100,7 @@ function PickView({
   hasResult: boolean;
   onShowResult(): void;
 }) {
-  const { players } = useApp();
+  const { players, ask } = useApp();
   const [pasteOpen, setPasteOpen] = useState(false);
   const [rosterOpen, setRosterOpen] = useState(false);
   const [editing, setEditing] = useState<Player | null>(null);
@@ -131,7 +131,11 @@ function PickView({
           <button
             className={btn.ghost}
             onClick={() => {
-              if (confirm("לנקות את רשימת היום? השחקנים יישארו שמורים במאגר.")) setSelected(new Set());
+              ask({ title: "לנקות את רשימת היום?", message: "השחקנים יישארו שמורים במאגר.", confirmLabel: "ניקוי" }).then(
+                (ok) => {
+                  if (ok) setSelected(new Set());
+                },
+              );
             }}
           >
             🧹 ניקוי

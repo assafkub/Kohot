@@ -16,7 +16,7 @@ export function PlayerFormSheet({ open, player, onClose }: { open: boolean; play
 }
 
 function PlayerForm({ player, onDone }: { player: Player | null; onDone(): void }) {
-  const { addPlayers, updatePlayer, deletePlayer, toast } = useApp();
+  const { addPlayers, updatePlayer, deletePlayer, toast, ask } = useApp();
   const [name, setName] = useState(player?.name ?? "");
   const [rating, setRating] = useState(player?.rating ?? DEFAULT_RATING);
   const [positions, setPositions] = useState<Position[]>(player?.positions ?? []);
@@ -75,7 +75,11 @@ function PlayerForm({ player, onDone }: { player: Player | null; onDone(): void 
           className={`${btn.danger} w-full`}
           disabled={busy}
           onClick={() => {
-            if (confirm(`למחוק את ${player.name}?`)) run(() => deletePlayer(player.id), "נמחק");
+            ask({ title: `למחוק את ${player.name}?`, message: "השחקן יימחק מהמאגר.", confirmLabel: "מחיקה", danger: true }).then(
+              (ok) => {
+                if (ok) run(() => deletePlayer(player.id), "נמחק");
+              },
+            );
           }}
         >
           מחיקת שחקן

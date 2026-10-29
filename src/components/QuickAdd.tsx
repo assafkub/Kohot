@@ -3,28 +3,40 @@
 import { useState } from "react";
 import { useApp } from "./AppProvider";
 import { btn, input } from "./ui";
-import { findSimilarPlayers, matchPlayer, parsePlayerList } from "@/lib/parseList";
+import { findSimilarPlayers, fullerName, matchPlayer, parsePlayerList } from "@/lib/parseList";
 import { DEFAULT_RATING, type Player } from "@/lib/types";
 
 /** One-line add: type a name (optionally "name 5.5") and press Enter. */
 export function QuickAdd({ onAdded }: { onAdded?(player: Player): void }) {
-  const { players, addPlayers, toast } = useApp();
+  const { players, addPlayers, updatePlayer, toast, ask } = useApp();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <form
       className="flex gap-2"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
         const [parsed] = parsePlayerList(value);
         if (!parsed) return;
         // Avoid duplicates: reuse an existing player with this name, or one the user confirms is the same.
-        const existing =
-          matchPlayer(parsed.name, players) ??
-          findSimilarPlayers(parsed.name, players).find((p) => confirm(`האם התכוונת ל${p.name}?\nאישור = כן, ביטול = שחקן חדש`));
+        let existing = matchPlayer(parsed.name, players);
+        for (const p of existing ? [] : findSimilarPlayers(parsed.name, players)) {
+          const same = await ask({
+            title: `האם התכוונת ל${p.name}?`,
+            message: `כבר יש במאגר שחקן בשם "${p.name}".`,
+            confirmLabel: `כן, ${p.name}`,
+            cancelLabel: "לא, שחקן חדש",
+          });
+          if (same) {
+            existing = p;
+            break;
+          }
+        }
         if (existing) {
           setValue("");
-          toast(`${existing.name} כבר ברשימה`);
+          const fuller = fullerName(existing.name, parsed.name);
+          if (fuller) await updatePlayer(existing.id, { name: fuller }).catch((err: Error) => toast(err.message));
+          toast(onAdded ? `${fuller ?? existing.name} נוסף מהמאגר ✓` : `${fuller ?? existing.name} כבר במאגר`);
           onAdded?.(existing);
           return;
         }

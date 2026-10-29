@@ -7,7 +7,7 @@ import { shareText, teamStyle } from "@/lib/teams";
 import { formatRating, type Game } from "@/lib/types";
 
 export default function HistoryPage() {
-  const { group, repo, toast } = useApp();
+  const { group, repo, toast, ask } = useApp();
   const [games, setGames] = useState<Game[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -80,11 +80,9 @@ export default function HistoryPage() {
                       <button
                         className={btn.danger}
                         onClick={() => {
-                          if (!confirm("למחוק את המשחק מההיסטוריה?")) return;
-                          repo
-                            .deleteGame(g.id)
-                            .then(load)
-                            .catch((e: Error) => toast(e.message));
+                          ask({ title: "למחוק את המשחק מההיסטוריה?", confirmLabel: "מחיקה", danger: true }).then((ok) => {
+                            if (ok) repo.deleteGame(g.id).then(load).catch((e: Error) => toast(e.message));
+                          });
                         }}
                       >
                         מחיקה

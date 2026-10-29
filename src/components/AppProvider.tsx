@@ -29,6 +29,16 @@ interface AppState {
   signIn(): Promise<void>;
   signOut(): Promise<void>;
   toast(message: string): void;
+  /** Styled in-app confirmation; resolves true when the user confirms. */
+  ask(options: AskOptions): Promise<boolean>;
+}
+
+export interface AskOptions {
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -52,6 +62,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loadedGroupId, setLoadedGroupId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const [dialog, setDialog] = useState<(AskOptions & { resolve(ok: boolean): void }) | null>(null);
+  const ask = useCallback(
+    (options: AskOptions) => new Promise<boolean>((resolve) => setDialog({ ...options, resolve })),
+    [],
+  );
+  const closeDialog = (ok: boolean) => {
+    dialog?.resolve(ok);
+    setDialog(null);
+  };
 
   const toast = useCallback((message: string) => {
     setToastMessage(message);
@@ -152,6 +172,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       players,
       playersLoading,
       toast,
+      ask,
       selectGroup(id) {
         writeStored(GROUP_KEY, id);
         setGroupId(id);
@@ -201,11 +222,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setPlayers([]);
       },
     };
-  }, [status, mode, user, repo, groups, group, groupId, players, playersLoading, toast, loadGroups]);
+  }, [status, mode, user, repo, groups, group, groupId, players, playersLoading, toast, ask, loadGroups]);
 
   return (
     <AppContext.Provider value={value}>
       {children}
+      {dialog && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center" onClick={() => closeDialog(false)}>
+          <div
+            role="alertdialog"
+            aria-label={dialog.title}
+            className="pb-safe w-full max-w-sm rounded-3xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-black">{dialog.title}</h2>
+            {dialog.message && <p className="mt-1.5 text-sm whitespace-pre-line text-zinc-600">{dialog.message}</p>}
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                autoFocus
+                onClick={() => closeDialog(true)}
+                className={`rounded-2xl px-4 py-3 font-bold text-white active:scale-[0.98] ${dialog.danger ? "bg-red-600" : "bg-emerald-700"}`}
+              >
+                {dialog.confirmLabel ?? "אישור"}
+              </button>
+              <button
+                onClick={() => closeDialog(false)}
+                className="rounded-2xl bg-zinc-100 px-4 py-3 font-semibold text-zinc-700 active:bg-zinc-200"
+              >
+                {dialog.cancelLabel ?? "ביטול"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {toastMessage && (
         <div className="fixed inset-x-4 top-4 z-50 mx-auto max-w-sm rounded-xl bg-zinc-900 px-4 py-3 text-center text-sm text-white shadow-lg">
           {toastMessage}
