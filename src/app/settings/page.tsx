@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useApp } from "@/components/AppProvider";
 import { btn, input } from "@/components/ui";
+import { missingSupabaseEnv } from "@/lib/supabase";
 
 export default function SettingsPage() {
   const { group, groups, selectGroup, renameGroup, createGroup, joinGroup, signOut, user, mode, toast } = useApp();
@@ -26,6 +27,9 @@ export default function SettingsPage() {
       {mode === "local" && (
         <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
           <b>מצב הדגמה:</b> הנתונים נשמרים רק בדפדפן הזה. אחרי חיבור Supabase (ראו README) תהיה התחברות עם Google ושיתוף עם חברים.
+          <div className="mt-2 text-xs" dir="ltr">
+            Missing in this build: {missingSupabaseEnv.join(", ")}
+          </div>
         </div>
       )}
 
