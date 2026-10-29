@@ -216,6 +216,10 @@ describe("shareText", () => {
       players: names.map((name) => ({ id: name, name, rating: 4, positions: [] })),
     });
     const text = shareText([team("⚫", ["אסי", "טל"]), team("⚪", ["אוראל", "ירון"]), team("🔵", ["רועי"])]);
-    expect(text).toBe("שחור\tלבן\tכחול\nאסי\tאוראל\tרועי\nטל\tירון");
+    expect(text.split("\n")).toEqual([
+      "שחור" + " ".repeat(5) + "לבן" + " ".repeat(7) + "כחול",
+      "אסי" + " ".repeat(6) + "אוראל" + " ".repeat(5) + "רועי",
+      "טל" + " ".repeat(7) + "ירון",
+    ]);
   });
 });

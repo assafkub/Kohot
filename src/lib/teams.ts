@@ -23,15 +23,23 @@ export function toSavedTeams(teams: BalancePlayer[][], colors?: number[]): Saved
 
 const COLOR_WORD: Record<string, string> = { "⚫": "שחור", "🔵": "כחול", "⚪": "לבן" };
 
+/** Spaces between columns; tabs looked bad in WhatsApp. */
+const COLUMN_GAP = 5;
+
 /**
- * WhatsApp message with the teams side by side, as the group writes it: a row of colors, then one row per place,
- * names separated by tabs. No ratings or averages, those stay in the app.
+ * WhatsApp message with the teams side by side, as the group writes it: a row of colors, then one row per place.
+ * Each column is padded to its longest name plus a few spaces, so the columns roughly line up.
+ * No ratings or averages, those stay in the app.
  */
 export function shareText(teams: SavedTeam[]): string {
-  const header = teams.map((t, i) => COLOR_WORD[t.color] ?? t.name ?? teamStyle(i).name);
-  const rows = Math.max(0, ...teams.map((t) => t.players.length));
-  const lines = [header.join("\t")];
-  for (let r = 0; r < rows; r++) lines.push(teams.map((t) => t.players[r]?.name ?? "").join("\t").trimEnd());
+  const columns = teams.map((t, i) => [COLOR_WORD[t.color] ?? t.name ?? teamStyle(i).name, ...t.players.map((p) => p.name)]);
+  const widths = columns.map((col) => Math.max(...col.map((cell) => cell.length)));
+  const rows = Math.max(0, ...columns.map((col) => col.length));
+  const lines: string[] = [];
+  for (let r = 0; r < rows; r++) {
+    const cells = columns.map((col, c) => (col[r] ?? "").padEnd(widths[c] + COLUMN_GAP));
+    lines.push(cells.join("").trimEnd());
+  }
   return lines.join("\n");
 }
 
