@@ -35,6 +35,8 @@ export interface Repo {
   setMemberRole(groupId: string, userId: string, role: Member["role"]): Promise<void>;
   removeMember(groupId: string, userId: string): Promise<void>;
   rotateInviteCode(groupId: string): Promise<string>;
+  /** One-time code that links the Telegram bot to this group (managers only, valid for 15 minutes). */
+  createTelegramLinkCode(groupId: string): Promise<string>;
 }
 
 function toPlayer(row: Record<string, unknown>): Player {
@@ -187,6 +189,11 @@ export const supabaseRepo: Repo = {
   async rotateInviteCode(groupId) {
     const { data, error } = await getSupabase().rpc("rotate_invite_code", { p_group: groupId });
     if (error) throw friendlyError(error);
+    return data as string;
+  },
+  async createTelegramLinkCode(groupId) {
+    const { data, error } = await getSupabase().rpc("create_telegram_link_code", { p_group: groupId });
+    if (error) throw isMissingFunction(error) ? new Error("צריך להריץ קודם את המיגרציה של טלגרם ב-Supabase") : friendlyError(error);
     return data as string;
   },
 };
@@ -356,5 +363,8 @@ export const localRepo: Repo = {
   },
   async rotateInviteCode() {
     return "LOCAL";
+  },
+  async createTelegramLinkCode() {
+    throw new Error("הבוט זמין רק אחרי חיבור ל-Supabase");
   },
 };

@@ -47,6 +47,19 @@ npm run dev
 2. הוסיפו Environment Variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 3. Deploy. אחרי שיש כתובת, עדכנו אותה ב-Supabase (שלב 5 למעלה).
 
+## בוט טלגרם
+
+מנהל חבורה מדביק לבוט את רשימת המגיעים (כמו בוואטסאפ) ומקבל 3 חלוקות מאוזנות שונות, בטקסט בעמודות (שמות בלבד). עובד בתוכנית החינמית של Vercel.
+
+1. **Supabase**: הריצו את `supabase/migrations/20261029140000_telegram.sql` ב-SQL Editor.
+2. **Vercel → Settings → Environment Variables** (ואחר כך Redeploy):
+   - `TELEGRAM_BOT_TOKEN` – הטוקן מ-BotFather.
+   - `TELEGRAM_WEBHOOK_SECRET` – מחרוזת אקראית ארוכה (אותיות באנגלית, ספרות, `_`, `-`).
+   - `SUPABASE_SERVICE_ROLE_KEY` – מ-Supabase → Project Settings → API (service_role / secret). רק בשרת, אף פעם לא עם `NEXT_PUBLIC_`.
+   - `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (לא חובה) – שם הבוט בלי @, כדי שהקוד בהגדרות ייפתח ישר בבוט.
+3. **חיבור הבוט לאתר**: פתחו פעם אחת בדפדפן `https://<האתר>/api/telegram/setup?secret=<TELEGRAM_WEBHOOK_SECRET>`. אמור לחזור `"ok": true`.
+4. **קישור מנהל**: באפליקציה, הגדרות → בוט טלגרם → קבלת קוד חיבור, ושולחים לבוט `/link <קוד>`. הבוט עונה רק למנהלים מקושרים, בצ'אט פרטי.
+
 ## מבנה
 
 - `src/lib/balance.ts` – אלגוריתם החלוקה (חיפוש מקומי עם התחלות אקראיות, ובחירה אקראית מבין החלוקות הטובות).

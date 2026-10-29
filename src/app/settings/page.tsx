@@ -116,6 +116,8 @@ export default function SettingsPage() {
 
       {group && manager && mode === "supabase" && <MembersSection key={group.id} />}
 
+      {group && manager && mode === "supabase" && <TelegramSection key={`tg-${group.id}`} />}
+
       {groups.length > 1 && (
         <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
           <h2 className="font-bold">החבורות שלי</h2>
@@ -275,6 +277,51 @@ function MembersSection() {
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+// Optional; with it the code becomes a link that opens the bot with the code already filled in.
+const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, "");
+
+function TelegramSection() {
+  const { group, repo, toast } = useApp();
+  const [code, setCode] = useState<string | null>(null);
+  if (!group) return null;
+
+  return (
+    <section className="space-y-3 rounded-3xl bg-white p-5 shadow-sm">
+      <h2 className="font-bold">בוט טלגרם</h2>
+      <p className="text-sm text-zinc-600">מדביקים לבוט את רשימת המגיעים ומקבלים 3 חלוקות מאוזנות של &quot;{group.name}&quot;.</p>
+      {code ? (
+        <div className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-900">
+          {BOT_USERNAME ? (
+            <a className={`${btn.secondary} block text-center`} href={`https://t.me/${BOT_USERNAME}?start=${code}`} target="_blank" rel="noreferrer">
+              פתיחת הבוט וחיבור
+            </a>
+          ) : (
+            <>
+              שלחו לבוט:
+              <div className="mt-1 font-mono text-xl font-black" dir="ltr">
+                /link {code}
+              </div>
+            </>
+          )}
+          <p className="mt-2 text-xs">הקוד תקף ל-15 דקות ולשימוש אחד.</p>
+        </div>
+      ) : (
+        <button
+          className={btn.secondary}
+          onClick={() =>
+            repo
+              .createTelegramLinkCode(group.id)
+              .then(setCode)
+              .catch((e: Error) => toast(e.message))
+          }
+        >
+          קבלת קוד חיבור
+        </button>
+      )}
     </section>
   );
 }
