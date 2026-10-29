@@ -26,9 +26,70 @@ export function Shell({ children }: { children: React.ReactNode }) {
   if (status === "no-group") return <GroupSetup />;
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
-      <main className="flex-1 px-4 pt-4 pb-28">{children}</main>
+      <TopBar />
+      <main className="flex-1 px-4 pt-3 pb-28">{children}</main>
       <BottomNav />
     </div>
+  );
+}
+
+function TopBar() {
+  const { user, group, mode, signOut } = useApp();
+  const [open, setOpen] = useState(false);
+  const meta = user?.user_metadata ?? {};
+  const name: string = meta.full_name ?? meta.name ?? user?.email ?? "מצב הדגמה";
+  const avatar: string | undefined = meta.avatar_url ?? meta.picture;
+  return (
+    <header className="sticky top-0 z-30 flex items-center justify-between border-b border-zinc-200 bg-white/95 px-4 py-2 backdrop-blur">
+      <Link href="/" className="flex min-w-0 items-center gap-2 font-black text-emerald-800">
+        <span className="text-xl">⚽</span>
+        <span className="truncate">{group?.name ?? "כוחות"}</span>
+      </Link>
+      <div className="relative">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-emerald-700 font-bold text-white ring-2 ring-emerald-100"
+          aria-label="תפריט משתמש"
+          aria-expanded={open}
+        >
+          {avatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatar} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            name.trim().charAt(0).toUpperCase()
+          )}
+        </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="absolute end-0 top-11 z-50 w-60 overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-zinc-200">
+              <div className="border-b border-zinc-100 px-4 py-3">
+                <div className="truncate font-bold">{name}</div>
+                {user?.email && (
+                  <div className="truncate text-xs text-zinc-500" dir="ltr">
+                    {user.email}
+                  </div>
+                )}
+              </div>
+              <Link href="/settings" onClick={() => setOpen(false)} className="block px-4 py-3 text-sm active:bg-zinc-50">
+                ⚙️ הגדרות וחבורה
+              </Link>
+              {mode === "supabase" && (
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    signOut();
+                  }}
+                  className="block w-full px-4 py-3 text-start text-sm font-semibold text-red-700 active:bg-red-50"
+                >
+                  ↩ התנתקות
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </header>
   );
 }
 
