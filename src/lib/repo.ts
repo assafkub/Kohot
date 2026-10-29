@@ -5,6 +5,7 @@ import type { Game, Group, Player, PlayerInput, SavedTeam } from "./types";
 export interface GameInput {
   id: string | null;
   played_on: string;
+  title: string | null;
   teams: SavedTeam[];
 }
 
@@ -33,6 +34,19 @@ function friendlyError(error: { message: string; code?: string }): Error {
   if (error.code === "23505") return new Error("כבר יש שחקן בשם הזה");
   if (error.message.includes("invalid invite code")) return new Error("קוד הצטרפות לא נמצא");
   return new Error(error.message);
+}
+
+async function saveGameRow(groupId: string, { id, played_on, title, teams }: GameInput, withTitle = true): Promise<Game> {
+  const games = getSupabase().from("games");
+  const fields = withTitle ? { played_on, title, teams } : { played_on, teams };
+  if (id) {
+    const { data, error } = await games.update(fields).eq("id", id).select("*");
+    if (error) throw friendlyError(error);
+    if (data.length) return data[0] as Game;
+  }
+  const { data, error } = await games.insert({ ...fields, group_id: groupId }).select("*").single();
+  if (error) throw friendlyError(error);
+  return data as Game;
 }
 
 export const supabaseRepo: Repo = {
@@ -75,16 +89,14 @@ export const supabaseRepo: Repo = {
     const { error } = await getSupabase().from("players").delete().in("id", ids);
     if (error) throw friendlyError(error);
   },
-  async saveGame(groupId, { id, played_on, teams }) {
-    const games = getSupabase().from("games");
-    if (id) {
-      const { data, error } = await games.update({ played_on, teams }).eq("id", id).select("*");
-      if (error) throw friendlyError(error);
-      if (data.length) return data[0] as Game;
+  async saveGame(groupId, input) {
+    try {
+      return await saveGameRow(groupId, input);
+    } catch (e) {
+      // Databases without the title migration yet: save the game without its custom name.
+      if (!(e instanceof Error) || !e.message.includes("title")) throw e;
+      return saveGameRow(groupId, input, false);
     }
-    const { data, error } = await games.insert({ group_id: groupId, played_on, teams }).select("*").single();
-    if (error) throw friendlyError(error);
-    return data as Game;
   },
   async listGames(groupId) {
     const { data, error } = await getSupabase()
@@ -202,14 +214,14 @@ export const localRepo: Repo = {
       db.players = db.players.filter((p) => !ids.includes(p.id));
     });
   },
-  async saveGame(groupId, { id, played_on, teams }) {
+  async saveGame(groupId, { id, played_on, title, teams }) {
     return mutate((db) => {
       const existing = id ? db.games.find((g) => g.id === id) : undefined;
       if (existing) {
-        Object.assign(existing, { played_on, teams });
+        Object.assign(existing, { played_on, title, teams });
         return { ...existing };
       }
-      const game = { id: uid(), group_id: groupId, teams, played_on, created_at: new Date().toISOString() };
+      const game = { id: uid(), group_id: groupId, teams, played_on, title, created_at: new Date().toISOString() };
       db.games.unshift(game);
       return game;
     });

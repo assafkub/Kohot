@@ -52,7 +52,7 @@ export default function HistoryPage() {
               <li key={g.id} className="overflow-hidden rounded-3xl bg-white shadow-sm">
                 <button className="flex w-full items-center justify-between px-4 py-3 text-start" onClick={() => setOpenId(open ? null : g.id)}>
                   <span>
-                    <span className="block font-bold">⚽ {gameTitle(g.played_on)}</span>
+                    <span className="block font-bold">⚽ {gameTitle(g)}</span>
                     <span className="text-sm text-zinc-500">
                       {g.teams.map((t, i) => `${teamEmoji(t, i)} ${formatRating(t.total)}`).join("  ")}
                     </span>
@@ -88,7 +88,7 @@ export default function HistoryPage() {
                       </button>
                       <button
                         className={btn.secondary}
-                        onClick={() => navigator.clipboard?.writeText(shareText(g.teams, gameTitle(g.played_on))).then(() => toast("הועתק ✓"))}
+                        onClick={() => navigator.clipboard?.writeText(shareText(g.teams, gameTitle(g))).then(() => toast("הועתק ✓"))}
                       >
                         📄 העתקה
                       </button>

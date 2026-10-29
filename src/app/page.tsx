@@ -9,7 +9,16 @@ import { btn, input, PositionTags, RatingBadge, Sheet, Spinner } from "@/compone
 import { balanceTeams, summarizeTeam, teamSizes } from "@/lib/balance";
 import { normalizeName } from "@/lib/parseList";
 import { readStored, writeStored } from "@/lib/storage";
-import { draftKeys, gameTitle, readDraftGame, todayIso, type DraftGame, type StoredResult } from "@/lib/draft";
+import {
+  defaultGameTitle,
+  draftKeys,
+  gameTitle,
+  readDraftGame,
+  shortDate,
+  todayIso,
+  type DraftGame,
+  type StoredResult,
+} from "@/lib/draft";
 import { shareText, toSavedTeams } from "@/lib/teams";
 import type { Player } from "@/lib/types";
 
@@ -63,9 +72,9 @@ function Today({ groupId }: { groupId: string }) {
     const timer = setTimeout(() => {
       setSaveState("saving");
       repo
-        .saveGame(groupId, { id: game.gameId, played_on: game.date, teams: toSavedTeams(teams) })
+        .saveGame(groupId, { id: game.gameId, played_on: game.date, title: game.title ?? null, teams: toSavedTeams(teams) })
         .then((saved) => {
-          if (saved.id !== game.gameId) setGame({ date: game.date, gameId: saved.id });
+          if (saved.id !== game.gameId) setGame({ ...game, gameId: saved.id });
           setSaveState("saved");
         })
         .catch((e: Error) => {
@@ -75,7 +84,7 @@ function Today({ groupId }: { groupId: string }) {
     }, 600);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teams, game.date]);
+  }, [teams, game.date, game.title]);
 
   const generate = (avoidKey?: string) => {
     const res = balanceTeams(comingPlayers, TEAM_COUNT, { avoidKey });
@@ -89,17 +98,23 @@ function Today({ groupId }: { groupId: string }) {
     setGame({ ...game, date });
     dirty.current = Boolean(result);
   };
+  const changeTitle = (title: string) => {
+    // Back to the default name when cleared or set to the default itself.
+    const custom = title.trim() && title.trim() !== defaultGameTitle(game.date) ? title.trim() : null;
+    setGame({ ...game, title: custom });
+    dirty.current = Boolean(result);
+  };
 
   const newGame = async () => {
     const ok = await ask({
-      title: "להתחיל משחק חדש?",
-      message: game.gameId ? "המשחק הנוכחי כבר שמור בהיסטוריה." : "רשימת היום והכוחות הנוכחיים יתאפסו.",
-      confirmLabel: "משחק חדש",
+      title: "להתחיל כדורגל חדש?",
+      message: game.gameId ? "הנוכחי כבר שמור בהיסטוריה." : "רשימת היום והכוחות הנוכחיים יתאפסו.",
+      confirmLabel: "חדש",
     });
     if (!ok) return;
     setSelected(new Set());
     setResult(null);
-    setGame({ date: todayIso(), gameId: null });
+    setGame({ date: todayIso(), gameId: null, title: null });
     setSaveState("idle");
     setView("pick");
   };
@@ -113,7 +128,13 @@ function Today({ groupId }: { groupId: string }) {
   }
 
   const header = (
-    <GameHeader game={game} saveState={result ? saveState : "idle"} onDate={changeDate} onNew={newGame} />
+    <GameHeader
+      game={game}
+      saveState={result ? saveState : "idle"}
+      onDate={changeDate}
+      onTitle={changeTitle}
+      onNew={newGame}
+    />
   );
 
   if (view === "teams" && result && teams) {
@@ -122,7 +143,7 @@ function Today({ groupId }: { groupId: string }) {
         {header}
         <TeamsView
           teams={teams}
-          title={gameTitle(game.date)}
+          title={gameTitle({ title: game.title, played_on: game.date })}
           onReshuffle={() => generate(result.key)}
           onBack={() => setView("pick")}
           onChange={(next) => setResult({ key: "", teams: next.map((t) => t.map((p) => p.id)) })}
@@ -146,38 +167,75 @@ function Today({ groupId }: { groupId: string }) {
   );
 }
 
-/** The game being prepared: its day and date, save status, and a way to start the next one. */
+/** The game being prepared: its name (editable), date, save status, and a way to start the next one. */
 function GameHeader({
   game,
   saveState,
   onDate,
+  onTitle,
   onNew,
 }: {
   game: DraftGame;
   saveState: "idle" | "saving" | "saved";
   onDate(date: string): void;
+  onTitle(title: string): void;
   onNew(): void;
 }) {
+  const title = gameTitle({ title: game.title, played_on: game.date });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const save = () => {
+    setEditing(false);
+    if (draft.trim() !== title) onTitle(draft);
+  };
+
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-2xl bg-emerald-800 px-4 py-3 text-white shadow-sm">
-      <label className="relative min-w-0 flex-1 cursor-pointer">
-        <span className="block text-xs text-emerald-200">
-          משחק{saveState === "saving" ? " · שומר…" : saveState === "saved" ? " · ✓ נשמר בהיסטוריה" : ""}
-        </span>
-        <span className="block text-lg leading-tight font-black whitespace-nowrap">
-          {gameTitle(game.date)} <span className="text-sm text-emerald-200">▾</span>
-        </span>
-        <input
-          type="date"
-          value={game.date}
-          onChange={(e) => onDate(e.target.value)}
-          className="absolute inset-0 opacity-0"
-          aria-label="תאריך המשחק"
-        />
-      </label>
-      <button onClick={onNew} className="shrink-0 rounded-xl bg-white/15 px-3 py-2 text-sm font-bold active:bg-white/25">
-        + משחק חדש
-      </button>
+    <div className="mb-4 rounded-2xl bg-emerald-800 px-4 py-3 text-white shadow-sm">
+      <div className="flex items-center gap-2">
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            maxLength={60}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="min-w-0 flex-1 rounded-lg bg-white/15 px-2 py-1 text-lg font-black text-white outline-none placeholder:text-emerald-200"
+            placeholder={defaultGameTitle(game.date)}
+            aria-label="שם המשחק"
+          />
+        ) : (
+          <button
+            onClick={() => {
+              setDraft(title);
+              setEditing(true);
+            }}
+            className="min-w-0 flex-1 truncate text-start text-lg leading-tight font-black"
+            aria-label="שינוי השם"
+          >
+            {title} <span className="text-sm font-normal text-emerald-200">✎</span>
+          </button>
+        )}
+        <button onClick={onNew} className="shrink-0 rounded-xl bg-white/15 px-3 py-1.5 text-sm font-bold active:bg-white/25">
+          + חדש
+        </button>
+      </div>
+      <div className="mt-1 flex items-center gap-3 text-xs text-emerald-200">
+        <label className="relative cursor-pointer rounded-md bg-white/10 px-2 py-0.5">
+          📅 {shortDate(game.date)} ▾
+          <input
+            type="date"
+            value={game.date}
+            onChange={(e) => onDate(e.target.value)}
+            className="absolute inset-0 opacity-0"
+            aria-label="תאריך"
+          />
+        </label>
+        <span>{saveState === "saving" ? "שומר…" : saveState === "saved" ? "✓ נשמר בהיסטוריה" : ""}</span>
+      </div>
     </div>
   );
 }

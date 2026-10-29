@@ -62,6 +62,8 @@ export interface Game {
   id: string;
   group_id: string;
   played_on: string;
+  /** Custom name; when missing, the default name for the date is shown. */
+  title?: string | null;
   teams: SavedTeam[];
   created_at: string;
 }
