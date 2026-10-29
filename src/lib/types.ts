@@ -38,10 +38,35 @@ export interface PlayerInput {
   positions: Position[];
 }
 
+/** "admin" is the super admin, who manages every group. */
+export type GroupRole = "admin" | "manager" | "player";
+
 export interface Group {
   id: string;
   name: string;
-  invite_code: string;
+  /** Only managers get the join code. */
+  invite_code: string | null;
+  role: GroupRole;
+}
+
+export function canManage(group: Group | null): boolean {
+  return group?.role === "admin" || group?.role === "manager";
+}
+
+export interface Member {
+  user_id: string;
+  role: "manager" | "player";
+  display_name: string | null;
+  email: string | null;
+}
+
+/** A game as players see it: names and colors only. */
+export interface PublishedGame {
+  id: string;
+  played_on: string;
+  title?: string | null;
+  published_at: string;
+  teams: { name: string; color: string; players: { name: string }[] }[];
 }
 
 export interface SavedTeamPlayer {
@@ -66,6 +91,8 @@ export interface Game {
   title?: string | null;
   teams: SavedTeam[];
   created_at: string;
+  /** Set when players can see the game. */
+  published_at?: string | null;
 }
 
 export function clampRating(value: number): number {

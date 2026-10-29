@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useApp } from "./AppProvider";
+import { PublishedGames } from "./PublishedGames";
 import { btn, input, Spinner } from "./ui";
 
 const NAV = [
@@ -13,8 +14,14 @@ const NAV = [
   { href: "/settings", label: "הגדרות", icon: "⚙️" },
 ];
 
+const PLAYER_NAV = [
+  { href: "/", label: "כוחות", icon: "⚽" },
+  { href: "/settings", label: "הגדרות", icon: "⚙️" },
+];
+
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { status } = useApp();
+  const { status, manager } = useApp();
+  const pathname = usePathname();
   if (status === "loading") {
     return (
       <div className="flex min-h-dvh items-center justify-center">
@@ -27,7 +34,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
       <TopBar />
-      <main className="flex-1 px-4 pt-3 pb-28">{children}</main>
+      {/* Players see only the published teams (and settings); the database refuses them the rest anyway. */}
+      <main className="flex-1 px-4 pt-3 pb-28">{manager || pathname === "/settings" ? children : <PublishedGames />}</main>
       <BottomNav />
     </div>
   );
@@ -95,10 +103,12 @@ function TopBar() {
 
 function BottomNav() {
   const pathname = usePathname();
+  const { manager } = useApp();
+  const nav = manager ? NAV : PLAYER_NAV;
   return (
     <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto grid max-w-lg grid-cols-4">
-        {NAV.map((item) => {
+      <div className={`mx-auto grid max-w-lg ${manager ? "grid-cols-4" : "grid-cols-2"}`}>
+        {nav.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <Link
@@ -143,7 +153,7 @@ function LoginScreen() {
 }
 
 function GroupSetup() {
-  const { createGroup, joinGroup, mode, toast } = useApp();
+  const { createGroup, joinGroup, mode, superAdmin, toast } = useApp();
   const [name, setName] = useState("הכדורגל של השכונה");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -158,21 +168,23 @@ function GroupSetup() {
       <div className="text-center">
         <div className="text-5xl">⚽</div>
         <h1 className="mt-3 text-2xl font-black">ברוכים הבאים!</h1>
-        <p className="mt-1 text-zinc-600">צרו חבורה חדשה, או הצטרפו לחבורה של חבר עם קוד.</p>
+        <p className="mt-1 text-zinc-600">{superAdmin ? "צרו חבורה חדשה, או הצטרפו לחבורה עם קוד." : "הכניסו את קוד ההצטרפות שקיבלתם ממנהל החבורה."}</p>
       </div>
-      <form
-        className="space-y-3 rounded-3xl bg-white p-5 shadow-sm"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) run(() => createGroup(name));
-        }}
-      >
-        <label className="block text-sm font-semibold">שם החבורה</label>
-        <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
-        <button className={`${btn.primary} w-full`} disabled={busy || !name.trim()}>
-          יצירת חבורה
-        </button>
-      </form>
+      {superAdmin && (
+        <form
+          className="space-y-3 rounded-3xl bg-white p-5 shadow-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim()) run(() => createGroup(name));
+          }}
+        >
+          <label className="block text-sm font-semibold">שם החבורה</label>
+          <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+          <button className={`${btn.primary} w-full`} disabled={busy || !name.trim()}>
+            יצירת חבורה
+          </button>
+        </form>
+      )}
       {mode === "supabase" && (
         <form
           className="space-y-3 rounded-3xl bg-white p-5 shadow-sm"

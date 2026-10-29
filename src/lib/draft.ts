@@ -11,6 +11,8 @@ export interface DraftGame {
   title?: string | null;
   /** draftSignature() at the last save to history; any difference means unsaved changes. */
   savedSig?: string | null;
+  /** The saved game is published to the players. */
+  published?: boolean;
 }
 
 export interface StoredResult {
@@ -70,7 +72,7 @@ export function draftSignature(
 export function forgetSavedGame(groupId: string, gameId?: string) {
   const game = readDraftGame(groupId);
   if (!game.gameId || (gameId && game.gameId !== gameId)) return;
-  writeStored(draftKeys(groupId).game, { ...game, gameId: null, savedSig: null } satisfies DraftGame);
+  writeStored(draftKeys(groupId).game, { ...game, gameId: null, savedSig: null, published: false } satisfies DraftGame);
 }
 
 /** Opens a saved game on the Today screen for viewing or editing. */
@@ -85,6 +87,7 @@ export function openGameAsDraft(groupId: string, game: Game) {
     gameId: game.id,
     title: game.title ?? null,
     savedSig: draftSignature(game.played_on, game.title, teams, colors),
+    published: Boolean(game.published_at),
   } satisfies DraftGame);
   writeStored(keys.revision, Date.now());
 }

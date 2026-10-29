@@ -92,8 +92,28 @@ function Today({ groupId }: { groupId: string }) {
         title: game.title ?? null,
         teams: toSavedTeams(teams, colors),
       });
-      setGame({ ...game, gameId: saved.id, savedSig: signature });
+      setGame({ ...game, gameId: saved.id, savedSig: signature, published: Boolean(saved.published_at) });
       toast(game.gameId ? "עודכן בהיסטוריה ✓" : "נוסף להיסטוריה ✓");
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Publishing saves to history first, so players always see what is on this screen.
+  const publish = async () => {
+    if (!teams || saving) return;
+    setSaving(true);
+    try {
+      const saved =
+        saveState === "saved" && game.gameId
+          ? null
+          : await repo.saveGame(groupId, { id: game.gameId, played_on: game.date, title: game.title ?? null, teams: toSavedTeams(teams, colors) });
+      const id = saved?.id ?? game.gameId!;
+      if (!saved?.published_at) await repo.setGamePublished(id, true);
+      setGame({ ...game, gameId: id, savedSig: signature, published: true });
+      toast("פורסם לשחקנים ✓");
     } catch (e) {
       toast((e as Error).message);
     } finally {
@@ -168,6 +188,8 @@ function Today({ groupId }: { groupId: string }) {
           saveState={saveState}
           saving={saving}
           onSave={saveToHistory}
+          published={Boolean(game.published)}
+          onPublish={publish}
         />
       </>
     );
@@ -491,6 +513,8 @@ function TeamsView({
   saveState,
   saving,
   onSave,
+  published,
+  onPublish,
 }: {
   teams: Player[][];
   onReshuffle(): void;
@@ -502,6 +526,8 @@ function TeamsView({
   saveState: SaveState;
   saving: boolean;
   onSave(): void;
+  published: boolean;
+  onPublish(): void;
 }) {
   const { toast } = useApp();
   const [picked, setPicked] = useState<string | null>(null);
@@ -623,6 +649,16 @@ function TeamsView({
           </button>
           <button className={btn.secondary} onClick={shareAsText}>
             📝 כטקסט
+          </button>
+          <button
+            className={`${btn.primary} col-span-2`}
+            disabled={saving || (published && saveState === "saved")}
+            onClick={() => {
+              setShareOpen(false);
+              onPublish();
+            }}
+          >
+            {published && saveState === "saved" ? "✓ פורסם לשחקנים באפליקציה" : published ? "📢 עדכון לשחקנים באפליקציה" : "📢 פרסום לשחקנים באפליקציה"}
           </button>
         </div>
       </Sheet>
