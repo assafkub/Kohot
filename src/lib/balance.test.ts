@@ -110,6 +110,33 @@ https://chat.whatsapp.com/abc`;
     ]);
   });
 
+  it("parses a PayBox group message", () => {
+    const text = `השימוש ב-PayBox חינם!
+מחכים לך בקבוצת "כדורגל יום רביעי 28.10",
+לחיצה להצטרפות לקבוצה: 
+https://links.payboxapp.com/epFS12LTx7b
+
+*כדורגל יום רביעי*:
+1.אבנר *שולם*
+2.אורי *שולם*
+5.תומר בכפוף למבחן כשירות *שולם*
+9.דור ב *שולם* 
+15.אבי חדפ (פוצי) *שולם*
+16.כלפון חדפ (אלמוג ) *שולם* 
+17. ערן חדפ (מתן)
+21. אביב דהן חדפ *שולם*`;
+    expect(parsePlayerList(text).map((p) => p.name)).toEqual([
+      "אבנר",
+      "אורי",
+      "תומר",
+      "דור ב",
+      "אבי חדפ",
+      "כלפון חדפ",
+      "ערן חדפ",
+      "אביב דהן חדפ",
+    ]);
+  });
+
   it("parses a plain list without bullets", () => {
     expect(parsePlayerList("אסף\nדני 5.5\nhttps://x.com/y").map((p) => p.name)).toEqual(["אסף", "דני"]);
   });

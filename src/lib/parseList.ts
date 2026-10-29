@@ -15,7 +15,10 @@ export function normalizeName(name: string): string {
     .toLowerCase();
 }
 
-const LIST_MARKER = /^\s*(\d{1,2}\s*[.)\-:]|[-*•·▪◦‣])\s*/u;
+// Numbering ("1." / "2)") or a bullet. "-" and "*" count only before a space, since "*bold*" titles start with "*".
+const LIST_MARKER = /^\s*(\d{1,2}\s*[.)\-:]|[•·▪◦‣]|[-*](?=\s))\s*/u;
+// "*כדורגל יום רביעי*:" and other lines ending with a colon are titles.
+const TITLE = /:\s*$/u;
 // A line with a link (payment link, group invite) is never a player.
 const LINK = /(https?:\/\/|www\.)|\b[\w-]+\.(com|co\.il|app|me|ly|io|link)\b/iu;
 const PAYMENT = /פייבוקס|פיי בוקס|לתשלום|תשלום|paybox|\bbit\b|ביט/iu;
@@ -30,7 +33,7 @@ const TEAM_WORDS = new Set(["לבנים", "שחורים", "כחולים", "אד�
 const MAX_NAME_WORDS = 2;
 
 function cleanLine(raw: string): ParsedLine | null {
-  if (LINK.test(raw) || PAYMENT.test(raw)) return null;
+  if (LINK.test(raw) || PAYMENT.test(raw) || TITLE.test(raw)) return null;
   let line = raw
     .replace(EMOJI, " ")
     .replace(LIST_MARKER, "")
