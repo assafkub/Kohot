@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "@/components/AppProvider";
-import { btn, RatingBadge, Spinner } from "@/components/ui";
+import { btn, Spinner } from "@/components/ui";
+import { SavedTeamColumns } from "@/components/TeamBoard";
 import { useRouter } from "next/navigation";
 import { forgetSavedGame, gameTitle, openGameAsDraft, shortDate } from "@/lib/draft";
 import { shareText, teamStyle } from "@/lib/teams";
@@ -110,21 +111,8 @@ export default function HistoryPage() {
                         <span className="text-zinc-400">{open ? "▲" : "▼"}</span>
                       </button>
                       {open && (
-                        <div className="space-y-3 border-t border-zinc-100 px-4 py-3">
-                          {g.teams.map((t, i) => (
-                            <div key={i}>
-                              <h3 className="mb-1 font-bold">
-                                {teamEmoji(t, i)} {t.name} ({formatRating(t.total)})
-                              </h3>
-                              <ul className="flex flex-wrap gap-1.5">
-                                {t.players.map((p) => (
-                                  <li key={p.id} className="flex items-center gap-1 rounded-lg bg-zinc-50 py-0.5 ps-2 pe-0.5 text-sm">
-                                    {p.name} <RatingBadge rating={p.rating} />
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
+                        <div className="space-y-3 border-t border-zinc-100 bg-zinc-50 px-2 py-3">
+                          <SavedTeamColumns teams={g.teams} />
                           <button
                             className={`${g.published_at ? btn.secondary : btn.primary} w-full`}
                             onClick={() =>

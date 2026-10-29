@@ -25,8 +25,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { comparePlayersForLineup, summarizeTeam } from "@/lib/balance";
-import { positionSummary, teamStyle } from "@/lib/teams";
-import { formatRating, POSITION_EMOJI, type Player } from "@/lib/types";
+import { positionSummary, TEAM_STYLES, teamStyle } from "@/lib/teams";
+import { formatRating, POSITION_EMOJI, type Player, type SavedTeam, type SavedTeamPlayer } from "@/lib/types";
 import { ratingColor } from "./ui";
 
 const containerId = (i: number) => `team-${i}`;
@@ -272,7 +272,39 @@ function SortablePlayer({
   );
 }
 
-function PlayerRow({ player, overlay }: { player: Player; overlay?: boolean }) {
+/** A saved split shown the same way as on the Today screen, read-only: three columns side by side. */
+export function SavedTeamColumns({ teams }: { teams: SavedTeam[] }) {
+  return (
+    <div className="grid grid-cols-3 items-start gap-1.5">
+      {teams.map((team, i) => {
+        const style = TEAM_STYLES.find((s) => s.emoji === team.color) ?? teamStyle(i);
+        const s = summarizeTeam(team.players);
+        return (
+          <section key={i} className="min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-zinc-100">
+            <div className={`px-2 py-2 text-center ${style.header}`}>
+              <h3 className="text-base font-black">{style.name}</h3>
+              <div className="text-xs leading-tight">
+                <b>{formatRating(s.total)}</b> · <span className="opacity-75">{s.average.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="border-b border-zinc-100 px-1 py-1 text-center text-[11px] leading-tight text-zinc-500">
+              {positionSummary(team.players) ? `${team.players.length} · ${positionSummary(team.players)}` : `${team.players.length} שחקנים`}
+            </div>
+            <ul className="divide-y divide-zinc-50">
+              {team.players.map((p) => (
+                <li key={p.id}>
+                  <PlayerRow player={p} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlayerRow({ player, overlay }: { player: SavedTeamPlayer; overlay?: boolean }) {
   const main = player.positions[0];
   return (
     <div
