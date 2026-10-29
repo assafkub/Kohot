@@ -31,6 +31,32 @@ describe("teamSizes", () => {
 });
 
 describe("balanceTeams", () => {
+  it("gives every team a balanced total, a center-back, fullbacks and midfielders, sorted by rating", () => {
+    // A typical week: 21 players, 2 goalkeepers (fewer than teams), mixed ratings.
+    const roles: Position[][] = [
+      ["GK"], ["GK", "CB"], ["CB"], ["CB", "FB"], ["CB"], ["FB"], ["FB", "MID"], ["FB"], ["FB"], ["FB", "CB"],
+      ["MID"], ["MID"], ["MID", "FWD"], ["MID"], ["MID", "FB"], ["MID"], ["FWD"], ["FWD", "MID"], ["FWD"], ["FWD"], ["MID"],
+    ];
+    for (let seed = 1; seed <= 15; seed++) {
+      const rng = seeded(seed * 7);
+      const players = roles.map((positions, i) => ({
+        id: `p${i}`, name: `שחקן ${i}`, rating: 1 + Math.round(rng() * 12) / 2, positions,
+      }));
+      const { teams } = balanceTeams(players, 3, { rng: seeded(seed) });
+      const totals = teams.map((t) => t.total);
+      expect(Math.max(...totals) - Math.min(...totals)).toBeLessThanOrEqual(1);
+      for (const t of teams) {
+        const can = (pos: Position) => t.players.filter((p) => p.positions.includes(pos)).length;
+        expect(can("CB")).toBeGreaterThanOrEqual(1);
+        expect(can("FB")).toBeGreaterThanOrEqual(2);
+        expect(can("MID")).toBeGreaterThanOrEqual(2);
+        expect(can("GK")).toBeLessThanOrEqual(1);
+        const ratings = t.players.map((p) => p.rating);
+        expect(ratings).toEqual([...ratings].sort((a, b) => a - b));
+      }
+    }
+  });
+
   it("keeps every player exactly once and balances totals", () => {
     for (const [n, k] of [
       [21, 3],

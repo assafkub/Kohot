@@ -6,7 +6,7 @@ import { PasteListSheet, PlayerFormSheet } from "@/components/PlayerSheets";
 import { QuickAdd } from "@/components/QuickAdd";
 import { TeamBoard } from "@/components/TeamBoard";
 import { btn, input, PositionTags, RatingBadge, Sheet, Spinner } from "@/components/ui";
-import { balanceTeams, summarizeTeam, teamSizes } from "@/lib/balance";
+import { balanceTeams, comparePlayersForLineup, summarizeTeam, teamSizes } from "@/lib/balance";
 import { normalizeName } from "@/lib/parseList";
 import { readStored, writeStored } from "@/lib/storage";
 import {
@@ -529,6 +529,9 @@ function TeamsView({
     const a = next[from].findIndex((p) => p.id === picked);
     const b = next[to].findIndex((p) => p.id === id);
     [next[from][a], next[to][b]] = [next[to][b], next[from][a]];
+    // The two teams stay ordered by rating after a swap.
+    next[from].sort(comparePlayersForLineup);
+    next[to].sort(comparePlayersForLineup);
     onChange(next);
     setPicked(null);
   };

@@ -24,7 +24,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { summarizeTeam } from "@/lib/balance";
+import { comparePlayersForLineup, summarizeTeam } from "@/lib/balance";
 import { positionSummary, teamStyle } from "@/lib/teams";
 import { formatRating, POSITION_EMOJI, type Player } from "@/lib/types";
 import { ratingColor } from "./ui";
@@ -119,7 +119,10 @@ export function TeamBoard({
       const oi = next[to].indexOf(o);
       [next[from][ai], next[to][oi]] = [o, a];
     }
-    onChange(next.map((t) => t.map((id) => byId.get(id)!)));
+    const result = next.map((t) => t.map((id) => byId.get(id)!));
+    // After a swap between teams both stay ordered by rating; a reorder inside a team is kept as dragged.
+    if (from !== to) [from, to].forEach((t) => result[t].sort(comparePlayersForLineup));
+    onChange(result);
   };
 
   const active = activeId ? byId.get(activeId) : undefined;

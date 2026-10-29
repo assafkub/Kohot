@@ -26,12 +26,17 @@ export interface BalanceOptions {
   avoidKey?: string;
 }
 
-// Cost weights. Rating balance dominates, then goalkeepers, then the rest of the lineup.
-const RATING_WEIGHT = 2;
+// Cost weights. Rating balance dominates, then a basic lineup in every team, then an even spread of positions.
+const RATING_WEIGHT = 4;
 const SPREAD_WEIGHT = 1;
 const POSITION_WEIGHT: Record<Position, number> = { GK: 6, CB: 2, FB: 1.5, MID: 1, FWD: 1.5 };
 const SECONDARY_POSITION_VALUE = 0.4;
-const MISSING_GK_PENALTY = 25;
+/**
+ * What every team should have when there are enough such players: a center-back, two fullbacks, two midfielders,
+ * a forward. Goalkeepers are rare, so one per team only when there is one for each team; otherwise they are spread.
+ */
+const LINEUP_NEED: Record<Position, number> = { GK: 1, CB: 1, FB: 2, MID: 2, FWD: 1 };
+const MISSING_PENALTY: Record<Position, number> = { GK: 25, CB: 12, FB: 8, MID: 8, FWD: 5 };
 
 export function teamSizes(playerCount: number, teamCount: number): number[] {
   const base = Math.floor(playerCount / teamCount);
@@ -55,11 +60,13 @@ interface Context {
   ratings: number[];
   /** posValue[i][p]: how much player i counts toward position p (1 main, 0.4 secondary). */
   posValue: number[][];
-  canGk: boolean[];
+  /** canPlay[i][p]: player i lists position p (main or secondary). */
+  canPlay: boolean[][];
+  /** Players of each position every team should get (see LINEUP_NEED). */
+  need: number[];
   posIdeal: number[][];
   ratingTarget: number[];
   overallStd: number;
-  gkPlayers: number;
 }
 
 function buildContext(players: BalancePlayer[], k: number): Context {
@@ -75,18 +82,21 @@ function buildContext(players: BalancePlayer[], k: number): Context {
     }),
   );
   const supply = POSITIONS.map((_, pi) => posValue.reduce((s, v) => s + v[pi], 0));
-  const canGk = players.map((p) => p.positions.includes("GK"));
+  const canPlay = players.map((p) => POSITIONS.map((pos) => p.positions.includes(pos)));
+  const need = POSITIONS.map((pos, pi) =>
+    Math.min(LINEUP_NEED[pos], Math.floor(canPlay.filter((c) => c[pi]).length / k)),
+  );
   return {
     n,
     k,
     sizes,
     ratings,
     posValue,
-    canGk,
+    canPlay,
+    need,
     posIdeal: sizes.map((size) => supply.map((s) => (s * size) / n)),
     ratingTarget: sizes.map((size) => size * avg),
     overallStd,
-    gkPlayers: canGk.filter(Boolean).length,
   };
 }
 
@@ -94,14 +104,15 @@ function cost(assign: number[], ctx: Context): number {
   const { k, n } = ctx;
   const sums = new Array(k).fill(0);
   const squares = new Array(k).fill(0);
-  const gks = new Array(k).fill(0);
+  const can = Array.from({ length: k }, () => new Array(POSITIONS.length).fill(0));
   const pos = Array.from({ length: k }, () => new Array(POSITIONS.length).fill(0));
   for (let i = 0; i < n; i++) {
     const t = assign[i];
     const r = ctx.ratings[i];
     sums[t] += r;
     squares[t] += r * r;
-    if (ctx.canGk[i]) gks[t]++;
+    const cp = ctx.canPlay[i];
+    for (let p = 0; p < cp.length; p++) if (cp[p]) can[t][p]++;
     const pv = ctx.posValue[i];
     for (let p = 0; p < pv.length; p++) pos[t][p] += pv[p];
   }
@@ -114,10 +125,17 @@ function cost(assign: number[], ctx: Context): number {
     c += SPREAD_WEIGHT * (std - ctx.overallStd) ** 2;
     for (let p = 0; p < POSITIONS.length; p++) {
       c += POSITION_WEIGHT[POSITIONS[p]] * (pos[t][p] - ctx.posIdeal[t][p]) ** 2;
+      c += MISSING_PENALTY[POSITIONS[p]] * Math.max(0, ctx.need[p] - can[t][p]);
     }
-    if (gks[t] === 0 && ctx.gkPlayers >= k) c += MISSING_GK_PENALTY;
   }
   return c;
+}
+
+/** Largest distance of a team's rating total from its fair share. */
+function ratingGap(assign: number[], ctx: Context): number {
+  const sums = new Array(ctx.k).fill(0);
+  assign.forEach((t, i) => (sums[t] += ctx.ratings[i]));
+  return Math.max(...sums.map((s, t) => Math.abs(s - ctx.ratingTarget[t])));
 }
 
 function randomAssignment(ctx: Context, rng: () => number): number[] {
@@ -170,20 +188,21 @@ export function balanceTeams<P extends BalancePlayer>(
   if (players.length === 0) return { teams: [], key: "" };
 
   const ctx = buildContext(players, k);
-  const restarts = options.restarts ?? (players.length > 30 ? 20 : 36);
-  const found = new Map<string, { assign: number[]; cost: number }>();
+  const restarts = options.restarts ?? (players.length > 30 ? 30 : 80);
+  const found = new Map<string, { assign: number[]; cost: number; gap: number }>();
   for (let r = 0; r < restarts; r++) {
     const assign = randomAssignment(ctx, rng);
     const c = improve(assign, ctx, rng);
     const key = splitKey(assign, players, k);
-    if (!found.has(key)) found.set(key, { assign, cost: c });
+    if (!found.has(key)) found.set(key, { assign, cost: c, gap: ratingGap(assign, ctx) });
   }
 
   const all = [...found.entries()];
   const best = Math.min(...all.map(([, v]) => v.cost));
-  // Anything close to the best split is fair game, so reshuffles give different but balanced teams.
-  const tolerance = Math.max(1, best * 0.25);
-  let candidates = all.filter(([, v]) => v.cost <= best + tolerance);
+  const bestGap = Math.min(...all.map(([, v]) => v.gap));
+  // Splits about as good as the best are fair game, so reshuffles give different teams that are just as balanced.
+  const tolerance = Math.max(0.5, best * 0.15);
+  let candidates = all.filter(([, v]) => v.cost <= best + tolerance && v.gap <= bestGap + 0.5);
   if (options.avoidKey && candidates.length > 1) {
     candidates = candidates.filter(([key]) => key !== options.avoidKey);
   }
@@ -204,8 +223,9 @@ function positionOrder(p: BalancePlayer): number {
   return main ? POSITIONS.indexOf(main) : POSITIONS.length;
 }
 
+/** Order inside a team: by rating, 1 first and 7 last; same rating by position, then name. */
 export function comparePlayersForLineup(a: BalancePlayer, b: BalancePlayer): number {
-  return positionOrder(a) - positionOrder(b) || b.rating - a.rating || a.name.localeCompare(b.name, "he");
+  return a.rating - b.rating || positionOrder(a) - positionOrder(b) || a.name.localeCompare(b.name, "he");
 }
 
 export function summarizeTeam(players: BalancePlayer[]) {
