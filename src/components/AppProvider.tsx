@@ -25,6 +25,7 @@ interface AppState {
   addPlayers(inputs: PlayerInput[]): Promise<Player[]>;
   updatePlayer(id: string, patch: PlayerPatch): Promise<void>;
   deletePlayer(id: string): Promise<void>;
+  deletePlayers(ids: string[]): Promise<void>;
   signIn(): Promise<void>;
   signOut(): Promise<void>;
   toast(message: string): void;
@@ -179,8 +180,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setPlayers((list) => sortByName(list.map((p) => (p.id === id ? updated : p))));
       },
       async deletePlayer(id) {
-        await repo.deletePlayer(id);
+        await repo.deletePlayers([id]);
         setPlayers((list) => list.filter((p) => p.id !== id));
+      },
+      async deletePlayers(ids) {
+        await repo.deletePlayers(ids);
+        setPlayers((list) => list.filter((p) => !ids.includes(p.id)));
       },
       async signIn() {
         const { error } = await getSupabase().auth.signInWithOAuth({
