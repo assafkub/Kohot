@@ -87,18 +87,75 @@ export function parsePlayerList(text: string): ParsedLine[] {
   return result;
 }
 
-/**
- * Finds the existing player a pasted name refers to: exact match first, then a unique match on
- * the first word(s), so "דור ב" finds "דור ב" and "אביב" finds "אביב דהן" when there is only one אביב.
- */
+const FINAL_LETTERS: Record<string, string> = { ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ" };
+
+/** normalizeName plus Hebrew final letters folded to their regular form ("אורין" = "אורינ"). */
+export function foldName(name: string): string {
+  return normalizeName(name).replace(/[ךםןףץ]/g, (c) => FINAL_LETTERS[c]);
+}
+
+/** Without the letters people add or drop when spelling the same name (י, ו, א, ה). */
+function skeleton(folded: string): string {
+  return folded.replace(/[יואה]/g, "");
+}
+
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cur = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[b.length];
+}
+
+/** The existing player with exactly this name (ignoring punctuation, case and final letters). */
 export function matchPlayer<P extends { name: string }>(name: string, players: P[]): P | undefined {
-  const key = normalizeName(name);
-  const exact = players.find((p) => normalizeName(p.name) === key);
-  if (exact) return exact;
-  const first = key.split(" ")[0];
-  const sameFirst = players.filter((p) => normalizeName(p.name).split(" ")[0] === first);
-  if (sameFirst.length !== 1) return undefined;
-  const candidate = normalizeName(sameFirst[0].name);
-  // Only when one name is a prefix of the other ("אביב" ↔ "אביב דהן"), not "דור ב" vs "דור א".
-  return candidate.startsWith(key) || key.startsWith(candidate) ? sameFirst[0] : undefined;
+  const key = foldName(name);
+  return players.find((p) => foldName(p.name) === key);
+}
+
+/**
+ * Existing players whose name looks like the same person, to ask about rather than merge silently:
+ * a completed surname ("אורי ש" / "אורי שפירא"), spelling with or without י/ו ("אורי" / "אוריי"),
+ * or a one-letter typo. Different surname initials ("דור א" / "דור ב") are different people.
+ */
+export function findSimilarPlayers<P extends { name: string }>(name: string, players: P[]): P[] {
+  const a = foldName(name);
+  const aw = a.split(" ");
+  const scored: { player: P; score: number }[] = [];
+  for (const player of players) {
+    const b = foldName(player.name);
+    if (b === a) continue;
+    const bw = b.split(" ");
+    const aLast = aw.length > 1 ? aw[aw.length - 1] : "";
+    const bLast = bw.length > 1 ? bw[bw.length - 1] : "";
+    // Two different surname initials, or two different full surnames, are two people.
+    if (aw.length === bw.length && aLast && bLast && !aLast.startsWith(bLast) && !bLast.startsWith(aLast)) {
+      if (aLast.length === 1 || bLast.length === 1 || editDistance(aLast, bLast) > 1) continue;
+    }
+    let score = 0;
+    if (aw[0] === bw[0] && (a.startsWith(b) || b.startsWith(a))) score = 3;
+    else if (skeleton(a) === skeleton(b)) score = 2;
+    else if (Math.min(a.length, b.length) >= 3 && editDistance(a, b) <= 1) score = 1;
+    if (score) scored.push({ player, score });
+  }
+  return scored.sort((x, y) => y.score - x.score).slice(0, 3).map((s) => s.player);
+}
+
+/**
+ * When a pasted name completes an existing one ("אורי שפירא" for "אורי ש"), the fuller name to keep.
+ * Only the surname is completed; extra words such as the חדפ marker never rename a player.
+ */
+export function fullerName(existing: string, pasted: string): string | null {
+  const ew = foldName(existing).split(" ");
+  const pw = foldName(pasted).split(" ");
+  if (ew.length < 2 || ew.length !== pw.length || ew.slice(0, -1).join(" ") !== pw.slice(0, -1).join(" ")) return null;
+  const eLast = ew[ew.length - 1];
+  const pLast = pw[pw.length - 1];
+  return pLast.length > eLast.length && pLast.startsWith(eLast) ? pasted.trim() : null;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { balanceTeams, teamSizes, type BalancePlayer } from "./balance";
-import { matchPlayer, parsePlayerList } from "./parseList";
+import { findSimilarPlayers, fullerName, matchPlayer, parsePlayerList } from "./parseList";
 import type { Position } from "./types";
 
 function seeded(seed: number) {
@@ -142,12 +142,40 @@ https://links.payboxapp.com/epFS12LTx7b
   });
 });
 
-describe("matchPlayer", () => {
-  const players = [{ name: "אביב דהן" }, { name: "דור א" }, { name: "דור ב" }];
-  it("matches exact and unique first-name prefixes only", () => {
-    expect(matchPlayer("אביב", players)?.name).toBe("אביב דהן");
+describe("matchPlayer / findSimilarPlayers", () => {
+  const players = [
+    { name: "אביב דהן" },
+    { name: "דור א" },
+    { name: "דור ב" },
+    { name: "אורי שפירא" },
+    { name: "אורין" },
+    { name: "אוריי" },
+    { name: "יוסף כ" },
+  ];
+  const similar = (name: string) => findSimilarPlayers(name, players).map((p) => p.name);
+
+  it("matches exactly, folding final letters", () => {
     expect(matchPlayer("דור ב", players)?.name).toBe("דור ב");
-    expect(matchPlayer("דור", players)).toBeUndefined();
-    expect(matchPlayer("דור ג", players)).toBeUndefined();
+    expect(matchPlayer("אורינ", players)?.name).toBe("אורין");
+    expect(matchPlayer("אביב", players)).toBeUndefined();
+  });
+
+  it("suggests likely duplicates", () => {
+    expect(similar("אורי ש")[0]).toBe("אורי שפירא");
+    expect(similar("אביב")).toEqual(["אביב דהן"]);
+    expect(similar("אורי")).toContain("אוריי");
+    expect(similar("יוסף כהן")).toEqual(["יוסף כ"]);
+    expect(similar("אביב דהו")).toEqual(["אביב דהן"]);
+  });
+
+  it("keeps different surnames apart", () => {
+    expect(similar("דור ג")).toEqual([]);
+    expect(similar("אורי כהן")).not.toContain("אורי שפירא");
+  });
+
+  it("completes a surname only", () => {
+    expect(fullerName("אורי ש", "אורי שפירא")).toBe("אורי שפירא");
+    expect(fullerName("אבי", "אבי חדפ")).toBeNull();
+    expect(fullerName("דור ב", "דור א")).toBeNull();
   });
 });
