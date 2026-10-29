@@ -11,10 +11,11 @@ export function teamStyle(index: number) {
   return TEAM_STYLES[index % TEAM_STYLES.length];
 }
 
-export function toSavedTeams(teams: BalancePlayer[][]): SavedTeam[] {
+/** `colors[i]` is the TEAM_STYLES index worn by team i (they can be swapped); default is the natural order. */
+export function toSavedTeams(teams: BalancePlayer[][], colors?: number[]): SavedTeam[] {
   return teams.map((players, i) => ({
-    name: teamStyle(i).name,
-    color: teamStyle(i).emoji,
+    name: teamStyle(colors?.[i] ?? i).name,
+    color: teamStyle(colors?.[i] ?? i).emoji,
     total: players.reduce((s, p) => s + p.rating, 0),
     players: players.map(({ id, name, rating, positions }) => ({ id, name, rating, positions })),
   }));
@@ -24,13 +25,21 @@ export function toSavedTeams(teams: BalancePlayer[][]): SavedTeam[] {
 export function shareText(teams: SavedTeam[], title: string): string {
   const lines = [`⚽ הכוחות – ${title}`];
   teams.forEach((team, i) => {
-    lines.push("", `${teamStyle(i).emoji} *${team.name}* (${formatRating(team.total)})`);
+    lines.push("", `${team.color || teamStyle(i).emoji} *${team.name}* (${formatRating(team.total)})`);
     team.players.forEach((p) => {
       const main = p.positions[0];
       lines.push(`• ${p.name}${main ? ` ${POSITION_EMOJI[main]}` : ""}`);
     });
   });
   return lines.join("\n");
+}
+
+/** The color order of saved teams, for reopening them with the colors they had. */
+export function savedColorOrder(teams: SavedTeam[]): number[] {
+  return teams.map((t, i) => {
+    const found = TEAM_STYLES.findIndex((s) => s.emoji === t.color);
+    return found >= 0 ? found : i % TEAM_STYLES.length;
+  });
 }
 
 export function positionSummary(players: { positions: SavedTeam["players"][number]["positions"] }[]): string {

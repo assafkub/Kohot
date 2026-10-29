@@ -37,18 +37,23 @@ const headerIndex = (id: string) => (id.startsWith("head-") ? Number(id.slice(5)
  * The three teams side by side as columns, so the whole split fits a portrait phone screen.
  * Long-press (touch) or drag (mouse) a player: within its team it reorders, onto a player of another team it swaps them;
  * a short tap still selects it for a quick swap (handled by the parent through onTap).
- * A team's color header can be dragged onto another team (or tapped, then the other header tapped) to swap colors.
+ * A team's color header can be dragged onto another team (or tapped, then the other header tapped) to swap only the colors;
+ * the players stay where they are.
  */
 export function TeamBoard({
   teams,
+  colors,
   picked,
   onTap,
   onChange,
+  onColors,
 }: {
   teams: Player[][];
+  colors: number[];
   picked: string | null;
   onTap(id: string): void;
   onChange(teams: Player[][]): void;
+  onColors(colors: number[]): void;
 }) {
   const byId = new Map(teams.flat().map((p) => [p.id, p]));
   const ids = teams.map((t) => t.map((p) => p.id));
@@ -66,11 +71,10 @@ export function TeamBoard({
   const findTeam = (id: string) =>
     headerIndex(id) >= 0 ? headerIndex(id) : id.startsWith("team-") ? Number(id.slice(5)) : ids.findIndex((t) => t.includes(id));
 
-  // Colors belong to the column, so swapping two teams' players is swapping their colors.
   const swapColors = (a: number, b: number) => {
-    const next = teams.slice();
+    const next = teams.map((_, i) => colors[i] ?? i);
     [next[a], next[b]] = [next[b], next[a]];
-    onChange(next);
+    onColors(next);
   };
   const tapHeader = (i: number) => {
     if (pickedHead === null) setPickedHead(i);
@@ -134,6 +138,7 @@ export function TeamBoard({
           <TeamCard
             key={i}
             index={i}
+            color={colors[i] ?? i}
             players={teamIds.map((id) => byId.get(id)!)}
             picked={picked}
             activeId={activeId}
@@ -151,8 +156,8 @@ export function TeamBoard({
         {active ? (
           <PlayerRow player={active} overlay />
         ) : draggingHead >= 0 ? (
-          <div className={`rounded-xl px-3 py-2 text-center font-black opacity-90 shadow-xl ring-2 ring-emerald-500 ${teamStyle(draggingHead).header}`}>
-            {teamStyle(draggingHead).name}
+          <div className={`rounded-xl px-3 py-2 text-center font-black opacity-90 shadow-xl ring-2 ring-emerald-500 ${teamStyle(colors[draggingHead] ?? draggingHead).header}`}>
+            {teamStyle(colors[draggingHead] ?? draggingHead).name}
           </div>
         ) : null}
       </DragOverlay>
@@ -162,6 +167,7 @@ export function TeamBoard({
 
 function TeamCard({
   index,
+  color,
   players,
   picked,
   activeId,
@@ -171,6 +177,7 @@ function TeamCard({
   onTapHeader,
 }: {
   index: number;
+  color: number;
   players: Player[];
   picked: string | null;
   activeId: string | null;
@@ -179,7 +186,7 @@ function TeamCard({
   headState: "picked" | "target" | "dragging" | null;
   onTapHeader(): void;
 }) {
-  const style = teamStyle(index);
+  const style = teamStyle(color);
   const s = summarizeTeam(players);
   const { setNodeRef } = useDroppable({ id: containerId(index) });
   const head = useDraggable({ id: headerId(index) });

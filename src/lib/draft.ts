@@ -1,4 +1,5 @@
 import { readStored, writeStored } from "./storage";
+import { savedColorOrder } from "./teams";
 import type { Game } from "./types";
 
 /** The game being prepared on the Today screen, kept per group in this browser. */
@@ -15,6 +16,8 @@ export interface DraftGame {
 export interface StoredResult {
   key: string;
   teams: string[][];
+  /** TEAM_STYLES index worn by each team; missing means the natural order. */
+  colors?: number[];
 }
 
 export const draftKeys = (groupId: string) => ({
@@ -50,8 +53,15 @@ export function readDraftGame(groupId: string): DraftGame {
   return readStored<DraftGame>(draftKeys(groupId).game, { date: todayIso(), gameId: null });
 }
 
-export function draftSignature(date: string, title: string | null | undefined, teams: string[][]): string {
-  return JSON.stringify([date, title ?? null, teams]);
+export const DEFAULT_COLORS = [0, 1, 2];
+
+export function draftSignature(
+  date: string,
+  title: string | null | undefined,
+  teams: string[][],
+  colors: number[] = DEFAULT_COLORS,
+): string {
+  return JSON.stringify([date, title ?? null, teams, colors]);
 }
 
 /** After games were deleted from history, the draft that pointed at one of them becomes an unsaved draft again. */
@@ -66,11 +76,12 @@ export function openGameAsDraft(groupId: string, game: Game) {
   const keys = draftKeys(groupId);
   const teams = game.teams.map((t) => t.players.map((p) => p.id));
   writeStored(keys.attendance, teams.flat());
-  writeStored(keys.result, { key: "", teams } satisfies StoredResult);
+  const colors = savedColorOrder(game.teams);
+  writeStored(keys.result, { key: "", teams, colors } satisfies StoredResult);
   writeStored(keys.game, {
     date: game.played_on,
     gameId: game.id,
     title: game.title ?? null,
-    savedSig: draftSignature(game.played_on, game.title, teams),
+    savedSig: draftSignature(game.played_on, game.title, teams, colors),
   } satisfies DraftGame);
 }

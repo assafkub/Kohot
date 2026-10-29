@@ -11,6 +11,7 @@ import { normalizeName } from "@/lib/parseList";
 import { readStored, writeStored } from "@/lib/storage";
 import {
   defaultGameTitle,
+  DEFAULT_COLORS,
   draftKeys,
   draftSignature,
   gameTitle,
@@ -67,7 +68,8 @@ function Today({ groupId }: { groupId: string }) {
   );
 
   // The split is a draft until it is added to history on purpose; later changes then update that same game.
-  const signature = teams ? draftSignature(game.date, game.title, teams.map((t) => t.map((p) => p.id))) : null;
+  const colors = result?.colors ?? DEFAULT_COLORS;
+  const signature = teams ? draftSignature(game.date, game.title, teams.map((t) => t.map((p) => p.id)), colors) : null;
   const saveState: SaveState = !teams ? "none" : game.gameId && game.savedSig === signature ? "saved" : game.gameId ? "changed" : "draft";
 
   const saveToHistory = async () => {
@@ -78,7 +80,7 @@ function Today({ groupId }: { groupId: string }) {
         id: game.gameId,
         played_on: game.date,
         title: game.title ?? null,
-        teams: toSavedTeams(teams),
+        teams: toSavedTeams(teams, colors),
       });
       setGame({ ...game, gameId: saved.id, savedSig: signature });
       toast(game.gameId ? "עודכן בהיסטוריה ✓" : "נוסף להיסטוריה ✓");
@@ -91,7 +93,7 @@ function Today({ groupId }: { groupId: string }) {
 
   const generate = (avoidKey?: string) => {
     const res = balanceTeams(comingPlayers, TEAM_COUNT, { avoidKey });
-    setResult({ key: res.key, teams: res.teams.map((t) => t.players.map((p) => p.id)) });
+    setResult({ key: res.key, teams: res.teams.map((t) => t.players.map((p) => p.id)), colors });
     setView("teams");
     window.scrollTo({ top: 0 });
   };
@@ -150,7 +152,9 @@ function Today({ groupId }: { groupId: string }) {
           title={gameTitle({ title: game.title, played_on: game.date })}
           onReshuffle={() => generate(result.key)}
           onBack={() => setView("pick")}
-          onChange={(next) => setResult({ key: "", teams: next.map((t) => t.map((p) => p.id)) })}
+          colors={colors}
+          onChange={(next) => setResult({ key: "", teams: next.map((t) => t.map((p) => p.id)), colors })}
+          onColors={(next) => setResult({ ...result, colors: next })}
           canReshuffle={comingPlayers.length >= 2}
           saveState={saveState}
           saving={saving}
@@ -472,7 +476,9 @@ function TeamsView({
   title,
   onReshuffle,
   onBack,
+  colors,
   onChange,
+  onColors,
   canReshuffle,
   saveState,
   saving,
@@ -482,7 +488,9 @@ function TeamsView({
   title: string;
   onReshuffle(): void;
   onBack(): void;
+  colors: number[];
   onChange(teams: Player[][]): void;
+  onColors(colors: number[]): void;
   canReshuffle: boolean;
   saveState: SaveState;
   saving: boolean;
@@ -495,7 +503,7 @@ function TeamsView({
   const averages = summaries.map((s) => s.average);
   const avgGap = averages.length ? Math.max(...averages) - Math.min(...averages) : 0;
 
-  const text = () => shareText(toSavedTeams(teams), title);
+  const text = () => shareText(toSavedTeams(teams, colors), title);
 
   const tapPlayer = (id: string) => {
     if (!picked || picked === id) {
@@ -548,7 +556,7 @@ function TeamsView({
           : "החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם. החלפת צבע: אותו דבר עם כותרת הקבוצה."}
       </p>
 
-      <TeamBoard teams={teams} picked={picked} onTap={tapPlayer} onChange={onChange} />
+      <TeamBoard teams={teams} colors={colors} picked={picked} onTap={tapPlayer} onChange={onChange} onColors={onColors} />
 
       <div className="pb-safe fixed inset-x-0 bottom-16 z-20 border-t border-zinc-200 bg-white/95 px-4 pt-3 backdrop-blur">
         <div className="mx-auto grid max-w-lg grid-cols-2 gap-2">
