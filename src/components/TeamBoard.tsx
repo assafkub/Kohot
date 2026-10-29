@@ -8,6 +8,7 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
+  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
@@ -29,11 +30,14 @@ import { formatRating, POSITION_EMOJI, type Player } from "@/lib/types";
 import { ratingColor } from "./ui";
 
 const containerId = (i: number) => `team-${i}`;
+const headerId = (i: number) => `head-${i}`;
+const headerIndex = (id: string) => (id.startsWith("head-") ? Number(id.slice(5)) : -1);
 
 /**
  * The three teams side by side as columns, so the whole split fits a portrait phone screen.
  * Long-press (touch) or drag (mouse) a player: within its team it reorders, onto a player of another team it swaps them;
  * a short tap still selects it for a quick swap (handled by the parent through onTap).
+ * A team's color header can be dragged onto another team (or tapped, then the other header tapped) to swap colors.
  */
 export function TeamBoard({
   teams,
@@ -50,6 +54,7 @@ export function TeamBoard({
   const ids = teams.map((t) => t.map((p) => p.id));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const [pickedHead, setPickedHead] = useState<number | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -58,10 +63,28 @@ export function TeamBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const findTeam = (id: string) => ids.findIndex((t) => t.includes(id));
+  const findTeam = (id: string) =>
+    headerIndex(id) >= 0 ? headerIndex(id) : id.startsWith("team-") ? Number(id.slice(5)) : ids.findIndex((t) => t.includes(id));
+
+  // Colors belong to the column, so swapping two teams' players is swapping their colors.
+  const swapColors = (a: number, b: number) => {
+    const next = teams.slice();
+    [next[a], next[b]] = [next[b], next[a]];
+    onChange(next);
+  };
+  const tapHeader = (i: number) => {
+    if (pickedHead === null) setPickedHead(i);
+    else {
+      if (pickedHead !== i) swapColors(pickedHead, i);
+      setPickedHead(null);
+    }
+  };
+
+  const draggingHead = activeId ? headerIndex(activeId) : -1;
+  const headTarget = draggingHead >= 0 && overId && findTeam(overId) !== draggingHead ? findTeam(overId) : -1;
   // Dropping on a player of another team swaps the two, so team sizes never change.
   const swapTarget =
-    activeId && overId && findTeam(overId) >= 0 && findTeam(overId) !== findTeam(activeId) ? overId : null;
+    activeId && draggingHead < 0 && overId && !overId.startsWith("head-") && findTeam(overId) >= 0 && findTeam(overId) !== findTeam(activeId) ? overId : null;
 
   const reset = () => {
     setActiveId(null);
@@ -79,6 +102,11 @@ export function TeamBoard({
     const from = findTeam(a);
     const to = findTeam(o);
     if (from < 0 || to < 0 || a === o) return;
+    if (headerIndex(a) >= 0) {
+      if (from !== to) swapColors(from, to);
+      return;
+    }
+    if (headerIndex(o) >= 0 || o.startsWith("team-")) return;
     const next = ids.map((t) => t.slice());
     if (from === to) {
       next[from] = arrayMove(next[from], next[from].indexOf(a), next[from].indexOf(o));
@@ -111,10 +139,23 @@ export function TeamBoard({
             activeId={activeId}
             swapTarget={swapTarget}
             onTap={onTap}
+            headState={pickedHead === i ? "picked" : headTarget === i ? "target" : draggingHead === i ? "dragging" : null}
+            onTapHeader={() => tapHeader(i)}
           />
         ))}
       </div>
-      <DragOverlay>{active ? <PlayerRow player={active} overlay /> : null}</DragOverlay>
+      {pickedHead !== null && (
+        <p className="mt-1.5 text-center text-xs text-zinc-500">בחרו קבוצה אחרת כדי להחליף איתה צבע</p>
+      )}
+      <DragOverlay>
+        {active ? (
+          <PlayerRow player={active} overlay />
+        ) : draggingHead >= 0 ? (
+          <div className={`rounded-xl px-3 py-2 text-center font-black opacity-90 shadow-xl ring-2 ring-emerald-500 ${teamStyle(draggingHead).header}`}>
+            {teamStyle(draggingHead).name}
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -126,6 +167,8 @@ function TeamCard({
   activeId,
   swapTarget,
   onTap,
+  headState,
+  onTapHeader,
 }: {
   index: number;
   players: Player[];
@@ -133,13 +176,34 @@ function TeamCard({
   activeId: string | null;
   swapTarget: string | null;
   onTap(id: string): void;
+  headState: "picked" | "target" | "dragging" | null;
+  onTapHeader(): void;
 }) {
   const style = teamStyle(index);
   const s = summarizeTeam(players);
   const { setNodeRef } = useDroppable({ id: containerId(index) });
+  const head = useDraggable({ id: headerId(index) });
+  const headDrop = useDroppable({ id: headerId(index) });
+  const ring =
+    headState === "target"
+      ? "ring-2 ring-emerald-500 ring-inset"
+      : headState === "picked"
+        ? "ring-2 ring-amber-400 ring-inset"
+        : "";
   return (
-    <section className={`min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm `}>
-      <div className={`px-2 py-2 text-center ${style.header}`}>
+    <section className={`min-w-0 overflow-hidden rounded-2xl bg-white shadow-sm ${headState === "target" ? "ring-2 ring-emerald-500" : ""}`}>
+      <div
+        ref={(node) => {
+          head.setNodeRef(node);
+          headDrop.setNodeRef(node);
+        }}
+        {...head.attributes}
+        {...head.listeners}
+        onClick={onTapHeader}
+        aria-label={`צבע ${style.name}`}
+        style={{ WebkitTouchCallout: "none" }}
+        className={`cursor-grab px-2 py-2 text-center select-none ${style.header} ${ring} ${headState === "dragging" ? "opacity-40" : ""}`}
+      >
         <h2 className="flex items-center justify-center gap-1.5 text-base font-black">
           <span className={`h-3 w-3 shrink-0 rounded-full ${style.swatch}`} />
           {style.name}

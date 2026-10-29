@@ -8,6 +8,8 @@ export interface DraftGame {
   gameId: string | null;
   /** Custom name, or null to follow the date ("כדורגל חמישי - 29.10"). */
   title?: string | null;
+  /** draftSignature() at the last save to history; any difference means unsaved changes. */
+  savedSig?: string | null;
 }
 
 export interface StoredResult {
@@ -48,11 +50,27 @@ export function readDraftGame(groupId: string): DraftGame {
   return readStored<DraftGame>(draftKeys(groupId).game, { date: todayIso(), gameId: null });
 }
 
+export function draftSignature(date: string, title: string | null | undefined, teams: string[][]): string {
+  return JSON.stringify([date, title ?? null, teams]);
+}
+
+/** After games were deleted from history, the draft that pointed at one of them becomes an unsaved draft again. */
+export function forgetSavedGame(groupId: string, gameId?: string) {
+  const game = readDraftGame(groupId);
+  if (!game.gameId || (gameId && game.gameId !== gameId)) return;
+  writeStored(draftKeys(groupId).game, { ...game, gameId: null, savedSig: null } satisfies DraftGame);
+}
+
 /** Opens a saved game on the Today screen for viewing or editing. */
 export function openGameAsDraft(groupId: string, game: Game) {
   const keys = draftKeys(groupId);
   const teams = game.teams.map((t) => t.players.map((p) => p.id));
   writeStored(keys.attendance, teams.flat());
   writeStored(keys.result, { key: "", teams } satisfies StoredResult);
-  writeStored(keys.game, { date: game.played_on, gameId: game.id, title: game.title ?? null } satisfies DraftGame);
+  writeStored(keys.game, {
+    date: game.played_on,
+    gameId: game.id,
+    title: game.title ?? null,
+    savedSig: draftSignature(game.played_on, game.title, teams),
+  } satisfies DraftGame);
 }

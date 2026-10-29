@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useApp } from "@/components/AppProvider";
 import { PasteListSheet, PlayerFormSheet } from "@/components/PlayerSheets";
 import { QuickAdd } from "@/components/QuickAdd";
@@ -12,6 +12,7 @@ import { readStored, writeStored } from "@/lib/storage";
 import {
   defaultGameTitle,
   draftKeys,
+  draftSignature,
   gameTitle,
   readDraftGame,
   shortDate,
@@ -24,6 +25,9 @@ import type { Player } from "@/lib/types";
 
 // Always three teams of 7; with fewer players some teams get 6.
 const TEAM_COUNT = 3;
+
+/** none: no teams yet; draft: never saved; changed: saved, then edited; saved: matches history. */
+type SaveState = "none" | "draft" | "changed" | "saved";
 const FULL_TEAM = 7;
 
 export default function TodayPage() {
@@ -40,9 +44,7 @@ function Today({ groupId }: { groupId: string }) {
   const [result, setResultState] = useState<StoredResult | null>(() => readStored<StoredResult | null>(keys.result, null));
   const [game, setGameState] = useState<DraftGame>(() => readDraftGame(groupId));
   const [view, setView] = useState<"pick" | "teams">(() => (result ? "teams" : "pick"));
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(() => (game.gameId ? "saved" : "idle"));
-  // Set by user changes to the teams or the date; the effect below then saves the game to history.
-  const dirty = useRef(false);
+  const [saving, setSaving] = useState(false);
 
   const setSelected = (next: Set<string>) => {
     setSelectedState(next);
@@ -51,7 +53,6 @@ function Today({ groupId }: { groupId: string }) {
   const setResult = (next: StoredResult | null) => {
     setResultState(next);
     writeStored(keys.result, next);
-    dirty.current = Boolean(next);
   };
   const setGame = (next: DraftGame) => {
     setGameState(next);
@@ -65,26 +66,28 @@ function Today({ groupId }: { groupId: string }) {
     [result, byId],
   );
 
-  // Every split is saved to history automatically, as one game per draft.
-  useEffect(() => {
-    if (!dirty.current || !teams) return;
-    dirty.current = false;
-    const timer = setTimeout(() => {
-      setSaveState("saving");
-      repo
-        .saveGame(groupId, { id: game.gameId, played_on: game.date, title: game.title ?? null, teams: toSavedTeams(teams) })
-        .then((saved) => {
-          if (saved.id !== game.gameId) setGame({ ...game, gameId: saved.id });
-          setSaveState("saved");
-        })
-        .catch((e: Error) => {
-          setSaveState("idle");
-          toast(e.message);
-        });
-    }, 600);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teams, game.date, game.title]);
+  // The split is a draft until it is added to history on purpose; later changes then update that same game.
+  const signature = teams ? draftSignature(game.date, game.title, teams.map((t) => t.map((p) => p.id))) : null;
+  const saveState: SaveState = !teams ? "none" : game.gameId && game.savedSig === signature ? "saved" : game.gameId ? "changed" : "draft";
+
+  const saveToHistory = async () => {
+    if (!teams || saving) return;
+    setSaving(true);
+    try {
+      const saved = await repo.saveGame(groupId, {
+        id: game.gameId,
+        played_on: game.date,
+        title: game.title ?? null,
+        teams: toSavedTeams(teams),
+      });
+      setGame({ ...game, gameId: saved.id, savedSig: signature });
+      toast(game.gameId ? "עודכן בהיסטוריה ✓" : "נוסף להיסטוריה ✓");
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const generate = (avoidKey?: string) => {
     const res = balanceTeams(comingPlayers, TEAM_COUNT, { avoidKey });
@@ -96,26 +99,27 @@ function Today({ groupId }: { groupId: string }) {
   const changeDate = (date: string) => {
     if (!date) return;
     setGame({ ...game, date });
-    dirty.current = Boolean(result);
   };
   const changeTitle = (title: string) => {
     // Back to the default name when cleared or set to the default itself.
     const custom = title.trim() && title.trim() !== defaultGameTitle(game.date) ? title.trim() : null;
     setGame({ ...game, title: custom });
-    dirty.current = Boolean(result);
   };
 
   const newGame = async () => {
     const ok = await ask({
       title: "להתחיל כדורגל חדש?",
-      message: game.gameId ? "הנוכחי כבר שמור בהיסטוריה." : "רשימת היום והכוחות הנוכחיים יתאפסו.",
+      message:
+        saveState === "draft" || saveState === "changed"
+          ? "הכוחות הנוכחיים לא נשמרו בהיסטוריה ויימחקו."
+          : "רשימת היום והכוחות הנוכחיים יתאפסו.",
       confirmLabel: "חדש",
+      danger: saveState === "draft" || saveState === "changed",
     });
     if (!ok) return;
     setSelected(new Set());
     setResult(null);
-    setGame({ date: todayIso(), gameId: null, title: null });
-    setSaveState("idle");
+    setGame({ date: todayIso(), gameId: null, title: null, savedSig: null });
     setView("pick");
   };
 
@@ -130,7 +134,7 @@ function Today({ groupId }: { groupId: string }) {
   const header = (
     <GameHeader
       game={game}
-      saveState={result ? saveState : "idle"}
+      saveState={saveState}
       onDate={changeDate}
       onTitle={changeTitle}
       onNew={newGame}
@@ -148,6 +152,9 @@ function Today({ groupId }: { groupId: string }) {
           onBack={() => setView("pick")}
           onChange={(next) => setResult({ key: "", teams: next.map((t) => t.map((p) => p.id)) })}
           canReshuffle={comingPlayers.length >= 2}
+          saveState={saveState}
+          saving={saving}
+          onSave={saveToHistory}
         />
       </>
     );
@@ -176,7 +183,7 @@ function GameHeader({
   onNew,
 }: {
   game: DraftGame;
-  saveState: "idle" | "saving" | "saved";
+  saveState: SaveState;
   onDate(date: string): void;
   onTitle(title: string): void;
   onNew(): void;
@@ -234,7 +241,15 @@ function GameHeader({
             aria-label="תאריך"
           />
         </label>
-        <span>{saveState === "saving" ? "שומר…" : saveState === "saved" ? "✓ נשמר בהיסטוריה" : ""}</span>
+        <span>
+          {saveState === "saved"
+            ? "✓ שמור בהיסטוריה"
+            : saveState === "changed"
+              ? "יש שינויים שלא נשמרו"
+              : saveState === "draft"
+                ? "טיוטה, עוד לא בהיסטוריה"
+                : ""}
+        </span>
       </div>
     </div>
   );
@@ -459,6 +474,9 @@ function TeamsView({
   onBack,
   onChange,
   canReshuffle,
+  saveState,
+  saving,
+  onSave,
 }: {
   teams: Player[][];
   title: string;
@@ -466,6 +484,9 @@ function TeamsView({
   onBack(): void;
   onChange(teams: Player[][]): void;
   canReshuffle: boolean;
+  saveState: SaveState;
+  saving: boolean;
+  onSave(): void;
 }) {
   const { toast } = useApp();
   const [picked, setPicked] = useState<string | null>(null);
@@ -524,15 +545,18 @@ function TeamsView({
       <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
         {picked
           ? "עכשיו לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם"
-          : "החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם."}
+          : "החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם. החלפת צבע: אותו דבר עם כותרת הקבוצה."}
       </p>
 
       <TeamBoard teams={teams} picked={picked} onTap={tapPlayer} onChange={onChange} />
 
       <div className="pb-safe fixed inset-x-0 bottom-16 z-20 border-t border-zinc-200 bg-white/95 px-4 pt-3 backdrop-blur">
         <div className="mx-auto grid max-w-lg grid-cols-2 gap-2">
-          <button className={`${btn.primary} col-span-2`} onClick={onReshuffle} disabled={!canReshuffle}>
+          <button className={btn.secondary} onClick={onReshuffle} disabled={!canReshuffle}>
             🎲 ערבוב מחדש
+          </button>
+          <button className={btn.primary} onClick={onSave} disabled={saving || saveState === "saved"}>
+            {saving ? "שומר…" : saveState === "saved" ? "✓ בהיסטוריה" : saveState === "changed" ? "💾 עדכון" : "💾 להיסטוריה"}
           </button>
           <button className={btn.secondary} onClick={share}>
             📤 שיתוף

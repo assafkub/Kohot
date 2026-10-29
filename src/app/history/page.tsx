@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApp } from "@/components/AppProvider";
 import { btn, RatingBadge, Spinner } from "@/components/ui";
 import { useRouter } from "next/navigation";
-import { gameTitle, openGameAsDraft } from "@/lib/draft";
+import { forgetSavedGame, gameTitle, openGameAsDraft } from "@/lib/draft";
 import { shareText, teamStyle } from "@/lib/teams";
 import { formatRating, type Game, type SavedTeam } from "@/lib/types";
 
@@ -34,7 +34,35 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">היסטוריית משחקים</h1>
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-black">היסטוריית משחקים</h1>
+        {games && games.length > 0 && (
+          <button
+            className="rounded-xl px-3 py-1.5 text-sm font-semibold text-red-600 active:bg-red-50"
+            onClick={() => {
+              if (!group) return;
+              ask({
+                title: "למחוק את כל ההיסטוריה?",
+                message: `כל ${games.length} המשחקים יימחקו לצמיתות. השחקנים נשארים.`,
+                confirmLabel: "מחיקת הכל",
+                danger: true,
+              }).then((ok) => {
+                if (!ok) return;
+                repo
+                  .deleteAllGames(group.id)
+                  .then(() => {
+                    forgetSavedGame(group.id);
+                    toast("ההיסטוריה נמחקה");
+                    load();
+                  })
+                  .catch((e: Error) => toast(e.message));
+              });
+            }}
+          >
+            🗑 מחיקת הכל
+          </button>
+        )}
+      </header>
       {games === null ? (
         <div className="flex justify-center py-10">
           <Spinner />
@@ -42,7 +70,7 @@ export default function HistoryPage() {
       ) : games.length === 0 ? (
         <div className="rounded-3xl bg-white p-8 text-center text-zinc-500">
           <div className="text-4xl">📋</div>
-          <p className="mt-2">כל חלוקה לכוחות נשמרת כאן אוטומטית, לפי תאריך המשחק.</p>
+          <p className="mt-2">כוחות שהוספתם להיסטוריה יופיעו כאן לפי תאריך המשחק.</p>
         </div>
       ) : (
         <ul className="space-y-2">
@@ -96,7 +124,14 @@ export default function HistoryPage() {
                         className={btn.danger}
                         onClick={() => {
                           ask({ title: "למחוק את המשחק מההיסטוריה?", confirmLabel: "מחיקה", danger: true }).then((ok) => {
-                            if (ok) repo.deleteGame(g.id).then(load).catch((e: Error) => toast(e.message));
+                            if (!ok || !group) return;
+                            repo
+                              .deleteGame(g.id)
+                              .then(() => {
+                                forgetSavedGame(group.id, g.id);
+                                load();
+                              })
+                              .catch((e: Error) => toast(e.message));
                           });
                         }}
                       >

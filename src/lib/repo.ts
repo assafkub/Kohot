@@ -24,6 +24,7 @@ export interface Repo {
   saveGame(groupId: string, game: GameInput): Promise<Game>;
   listGames(groupId: string): Promise<Game[]>;
   deleteGame(id: string): Promise<void>;
+  deleteAllGames(groupId: string): Promise<void>;
 }
 
 function toPlayer(row: Record<string, unknown>): Player {
@@ -111,6 +112,10 @@ export const supabaseRepo: Repo = {
   },
   async deleteGame(id) {
     const { error } = await getSupabase().from("games").delete().eq("id", id);
+    if (error) throw friendlyError(error);
+  },
+  async deleteAllGames(groupId) {
+    const { error } = await getSupabase().from("games").delete().eq("group_id", groupId);
     if (error) throw friendlyError(error);
   },
 };
@@ -234,6 +239,11 @@ export const localRepo: Repo = {
   async deleteGame(id) {
     mutate((db) => {
       db.games = db.games.filter((g) => g.id !== id);
+    });
+  },
+  async deleteAllGames(groupId) {
+    mutate((db) => {
+      db.games = db.games.filter((g) => g.group_id !== groupId);
     });
   },
 };
