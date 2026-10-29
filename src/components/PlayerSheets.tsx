@@ -20,7 +20,6 @@ function PlayerForm({ player, onDone }: { player: Player | null; onDone(): void 
   const [name, setName] = useState(player?.name ?? "");
   const [rating, setRating] = useState(player?.rating ?? DEFAULT_RATING);
   const [positions, setPositions] = useState<Position[]>(player?.positions ?? []);
-  const [active, setActive] = useState(player?.active ?? true);
   const [busy, setBusy] = useState(false);
 
   const run = (fn: () => Promise<unknown>, message: string) => {
@@ -41,7 +40,7 @@ function PlayerForm({ player, onDone }: { player: Player | null; onDone(): void 
         e.preventDefault();
         const trimmed = name.trim();
         if (!trimmed) return;
-        if (player) run(() => updatePlayer(player.id, { name: trimmed, rating, positions, active }), "נשמר ✓");
+        if (player) run(() => updatePlayer(player.id, { name: trimmed, rating, positions }), "נשמר ✓");
         else run(() => addPlayers([{ name: trimmed, rating, positions }]), `${trimmed} נוסף ✓`);
       }}
     >
@@ -57,15 +56,6 @@ function PlayerForm({ player, onDone }: { player: Player | null; onDone(): void 
         <label className="mb-1.5 block text-sm font-semibold">תפקידים</label>
         <PositionPicker value={positions} onChange={setPositions} />
       </div>
-      {player && (
-        <label className="flex items-center justify-between rounded-xl bg-zinc-50 px-3.5 py-3 text-sm">
-          <span>
-            <span className="font-semibold">שחקן פעיל</span>
-            <span className="block text-xs text-zinc-500">שחקן לא פעיל לא מופיע ברשימת &quot;מי מגיע&quot;</span>
-          </span>
-          <input type="checkbox" className="h-5 w-5 accent-emerald-700" checked={active} onChange={(e) => setActive(e.target.checked)} />
-        </label>
-      )}
       <button className={`${btn.primary} w-full`} disabled={busy || !name.trim()}>
         {player ? "שמירה" : "הוספה"}
       </button>

@@ -447,7 +447,7 @@ function RosterSheet({
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const q = normalizeName(query);
-  const available = players.filter((p) => p.active && !exclude.has(p.id));
+  const available = players.filter((p) => !exclude.has(p.id));
   const visible = q ? available.filter((p) => normalizeName(p.name).includes(q)) : available;
 
   const close = () => {

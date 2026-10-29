@@ -19,8 +19,7 @@ export default function PlayersPage() {
 
   const filtered = useMemo(() => {
     const q = normalizeName(query);
-    const list = q ? players.filter((p) => normalizeName(p.name).includes(q)) : players;
-    return [...list.filter((p) => p.active), ...list.filter((p) => !p.active)];
+    return q ? players.filter((p) => normalizeName(p.name).includes(q)) : players;
   }, [players, query]);
 
   // Only players still in the list (and visible under the search) count as checked.
@@ -120,7 +119,7 @@ export default function PlayersPage() {
                   />
                 </label>
                 <button
-                  className={`flex min-w-0 flex-1 items-center gap-3 py-3 ps-2 pe-4 text-start active:bg-zinc-50 ${p.active ? "" : "opacity-45"}`}
+                  className={`flex min-w-0 flex-1 items-center gap-3 py-3 ps-2 pe-4 text-start active:bg-zinc-50`}
                   onClick={() => open(p)}
                 >
                   <RatingBadge rating={p.rating} />
