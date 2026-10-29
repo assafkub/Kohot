@@ -21,6 +21,8 @@ export interface StoredResult {
 }
 
 export const draftKeys = (groupId: string) => ({
+  /** Bumped when the draft is replaced from outside the Today screen (e.g. opening a game from history). */
+  revision: `kohot:draft-rev:${groupId}`,
   attendance: `kohot:attendance:${groupId}`,
   result: `kohot:result:${groupId}`,
   game: `kohot:game:${groupId}`,
@@ -84,4 +86,5 @@ export function openGameAsDraft(groupId: string, game: Game) {
     title: game.title ?? null,
     savedSig: draftSignature(game.played_on, game.title, teams, colors),
   } satisfies DraftGame);
+  writeStored(keys.revision, Date.now());
 }

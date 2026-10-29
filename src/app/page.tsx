@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useApp } from "@/components/AppProvider";
 import { PasteListSheet, PlayerFormSheet } from "@/components/PlayerSheets";
 import { QuickAdd } from "@/components/QuickAdd";
@@ -31,10 +31,19 @@ const TEAM_COUNT = 3;
 type SaveState = "none" | "draft" | "changed" | "saved";
 const FULL_TEAM = 7;
 
+const noSubscribe = () => () => {};
+
 export default function TodayPage() {
   const { group } = useApp();
+  // The router keeps this screen alive between visits, so a draft replaced elsewhere (a game opened from history)
+  // bumps a revision; the key change remounts Today, which then reads the new draft from storage.
+  const revision = useSyncExternalStore(
+    noSubscribe,
+    () => (group ? readStored<number>(draftKeys(group.id).revision, 0) : 0),
+    () => 0,
+  );
   // Remount per group so attendance and results are read from that group's storage.
-  return group ? <Today key={group.id} groupId={group.id} /> : null;
+  return group ? <Today key={`${group.id}:${revision}`} groupId={group.id} /> : null;
 }
 
 function Today({ groupId }: { groupId: string }) {
