@@ -82,18 +82,19 @@ function Today({ groupId }: { groupId: string }) {
   const signature = teams ? draftSignature(game.date, game.title, teams.map((t) => t.map((p) => p.id)), colors) : null;
   const saveState: SaveState = !teams ? "none" : game.gameId && game.savedSig === signature ? "saved" : game.gameId ? "changed" : "draft";
 
-  const saveToHistory = async () => {
+  /** `asNew` keeps the saved version as is and adds another version of the same day. */
+  const saveToHistory = async (asNew = false) => {
     if (!teams || saving) return;
     setSaving(true);
     try {
       const saved = await repo.saveGame(groupId, {
-        id: game.gameId,
+        id: asNew ? null : game.gameId,
         played_on: game.date,
         title: game.title ?? null,
         teams: toSavedTeams(teams, colors),
       });
       setGame({ ...game, gameId: saved.id, savedSig: signature, published: Boolean(saved.published_at) });
-      toast(game.gameId ? "עודכן בהיסטוריה ✓" : "נוסף להיסטוריה ✓");
+      toast(asNew ? "נשמרה גרסה חדשה ✓" : game.gameId ? "עודכן בהיסטוריה ✓" : "נוסף להיסטוריה ✓");
     } catch (e) {
       toast((e as Error).message);
     } finally {
@@ -525,7 +526,7 @@ function TeamsView({
   canReshuffle: boolean;
   saveState: SaveState;
   saving: boolean;
-  onSave(): void;
+  onSave(asNew?: boolean): void;
   published: boolean;
   onPublish(): void;
 }) {
@@ -561,6 +562,7 @@ function TeamsView({
   };
 
   const [shareOpen, setShareOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
 
   const shareAsText = async () => {
     setShareOpen(false);
@@ -629,8 +631,12 @@ function TeamsView({
           <button className={btn.secondary} onClick={onReshuffle} disabled={!canReshuffle}>
             🎲 ערבוב מחדש
           </button>
-          <button className={btn.primary} onClick={onSave} disabled={saving || saveState === "saved"}>
-            {saving ? "שומר…" : saveState === "saved" ? "✓ בהיסטוריה" : saveState === "changed" ? "💾 עדכון" : "💾 להיסטוריה"}
+          <button
+            className={btn.primary}
+            onClick={() => (saveState === "changed" ? setSaveOpen(true) : onSave())}
+            disabled={saving || saveState === "saved"}
+          >
+            {saving ? "שומר…" : saveState === "saved" ? "✓ בהיסטוריה" : saveState === "changed" ? "💾 שמירה" : "💾 להיסטוריה"}
           </button>
           <button className={btn.secondary} onClick={() => setShareOpen(true)}>
             📤 שיתוף
@@ -641,6 +647,31 @@ function TeamsView({
         </div>
       </div>
       <div className="h-36" />
+
+      {/* Changed after saving: either a new version of this day, or replace the saved one. */}
+      <Sheet open={saveOpen} onClose={() => setSaveOpen(false)} title="שמירה בהיסטוריה">
+        <div className="grid gap-2">
+          <button
+            className={btn.primary}
+            onClick={() => {
+              setSaveOpen(false);
+              onSave(true);
+            }}
+          >
+            ➕ שמירה כגרסה חדשה
+          </button>
+          <button
+            className={btn.secondary}
+            onClick={() => {
+              setSaveOpen(false);
+              onSave(false);
+            }}
+          >
+            ✎ עדכון הגרסה השמורה{published ? " (המפורסמת)" : ""}
+          </button>
+          <p className="text-xs text-zinc-500">כל הגרסאות של היום נשמרות בהיסטוריה, ורק אחת מהן מפורסמת לשחקנים.</p>
+        </div>
+      </Sheet>
 
       <Sheet open={shareOpen} onClose={() => setShareOpen(false)} title="שיתוף הכוחות">
         <div className="grid grid-cols-2 gap-2">
