@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "./AppProvider";
 import { btn, input, PositionPicker, RatingBadge, RatingPicker, Sheet } from "./ui";
-import { matchPlayer, parsePlayerList } from "@/lib/parseList";
+import { matchPlayer, normalizeName, parsePlayerList } from "@/lib/parseList";
 import { DEFAULT_RATING, type Player, type Position } from "@/lib/types";
 
 export function PlayerFormSheet({ open, player, onClose }: { open: boolean; player: Player | null; onClose(): void }) {
@@ -100,22 +100,34 @@ export function PasteListSheet({
   const { players, addPlayers, toast } = useApp();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  // Rows the user unticked in the preview, keyed by rowKey.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
-  const { matched, fresh } = useMemo(() => {
-    const matched: Player[] = [];
-    const fresh: { name: string; rating: number }[] = [];
+  const rows = useMemo(() => {
+    const rows: { key: string; name: string; rating: number; existing?: Player }[] = [];
     for (const line of parsePlayerList(text)) {
       const existing = matchPlayer(line.name, players);
-      if (existing) {
-        if (!matched.includes(existing)) matched.push(existing);
-      }
-      else fresh.push({ name: line.name, rating: line.rating ?? DEFAULT_RATING });
+      const key = existing ? `p:${existing.id}` : `n:${normalizeName(line.name)}`;
+      if (rows.some((r) => r.key === key)) continue;
+      rows.push({ key, name: existing?.name ?? line.name, rating: existing?.rating ?? line.rating ?? DEFAULT_RATING, existing });
     }
-    return { matched, fresh };
+    return rows;
   }, [text, players]);
+
+  const chosen = rows.filter((r) => !excluded.has(r.key));
+  const matched = chosen.flatMap((r) => (r.existing ? [r.existing] : []));
+  const fresh = chosen.filter((r) => !r.existing).map(({ name, rating }) => ({ name, rating }));
+
+  const toggle = (key: string) => {
+    const next = new Set(excluded);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setExcluded(next);
+  };
 
   const close = () => {
     setText("");
+    setExcluded(new Set());
     onClose();
   };
 
@@ -125,38 +137,48 @@ export function PasteListSheet({
         הדביקו את רשימת המגיעים מהוואטסאפ, שם בכל שורה. אפשר להוסיף רמה אחרי השם (למשל &quot;דני 5.5&quot;).
       </p>
       <textarea
-        className={`${input} h-40 resize-none`}
+        className={`${input} ${rows.length ? "h-24" : "h-40"} resize-none`}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={"1. אסף\n2. דני 5.5\n3. יוסי"}
         autoFocus
       />
-      {(matched.length > 0 || fresh.length > 0) && (
-        <div className="mt-3 space-y-2 text-sm">
-          {matched.length > 0 && (
-            <p>
-              <span className="font-semibold text-emerald-800">✓ {matched.length} מוכרים:</span>{" "}
-              <span className="text-zinc-600">{matched.map((p) => p.name).join(", ")}</span>
-            </p>
-          )}
+      {rows.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1.5 text-sm text-zinc-600">
+            נמצאו <b>{rows.length}</b> שמות. הורידו את הווי ממה שלא שייך:
+          </p>
+          <ul className="grid grid-cols-2 gap-1.5">
+            {rows.map((r) => {
+              const on = !excluded.has(r.key);
+              return (
+                <li key={r.key}>
+                  <label
+                    className={`flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm ${
+                      on ? (r.existing ? "bg-emerald-50" : "bg-amber-50") : "bg-zinc-100 text-zinc-400 line-through"
+                    }`}
+                  >
+                    <input type="checkbox" className="h-4 w-4 shrink-0 accent-emerald-700" checked={on} onChange={() => toggle(r.key)} />
+                    <span className="min-w-0 flex-1 truncate font-semibold">{r.name}</span>
+                    {r.existing ? (
+                      <RatingBadge rating={r.rating} />
+                    ) : (
+                      <span className="shrink-0 rounded-md bg-amber-200 px-1.5 text-[11px] font-bold text-amber-900">חדש</span>
+                    )}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
           {fresh.length > 0 && (
-            <div>
-              <p className="font-semibold text-amber-800">+ {fresh.length} חדשים (אפשר לערוך רמה ותפקיד אחר כך):</p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {fresh.map((p) => (
-                  <span key={p.name} className="flex items-center gap-1 rounded-lg bg-amber-50 py-0.5 ps-2 pe-0.5">
-                    {p.name} <RatingBadge rating={p.rating} />
-                  </span>
-                ))}
-              </div>
-            </div>
+            <p className="mt-2 text-xs text-amber-800">שחקנים חדשים יתווספו עם רמה {DEFAULT_RATING}, ואפשר לערוך אחר כך.</p>
           )}
         </div>
       )}
       <button
         type="button"
         className={`${btn.primary} mt-4 w-full`}
-        disabled={busy || (matched.length === 0 && fresh.length === 0)}
+        disabled={busy || chosen.length === 0}
         onClick={() => {
           setBusy(true);
           (fresh.length ? addPlayers(fresh.map((p) => ({ ...p, positions: [] }))) : Promise.resolve([]))
@@ -170,6 +192,7 @@ export function PasteListSheet({
         }}
       >
         {confirmLabel}
+        {chosen.length > 0 && ` (${chosen.length})`}
       </button>
     </Sheet>
   );
