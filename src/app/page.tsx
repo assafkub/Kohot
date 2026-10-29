@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/components/AppProvider";
 import { PasteListSheet, PlayerFormSheet } from "@/components/PlayerSheets";
 import { QuickAdd } from "@/components/QuickAdd";
@@ -9,17 +9,13 @@ import { btn, input, PositionTags, RatingBadge, Sheet, Spinner } from "@/compone
 import { balanceTeams, summarizeTeam, teamSizes } from "@/lib/balance";
 import { normalizeName } from "@/lib/parseList";
 import { readStored, writeStored } from "@/lib/storage";
-import { shareText, teamStyle } from "@/lib/teams";
-import type { Player, SavedTeam } from "@/lib/types";
+import { draftKeys, gameTitle, readDraftGame, todayIso, type DraftGame, type StoredResult } from "@/lib/draft";
+import { shareText, toSavedTeams } from "@/lib/teams";
+import type { Player } from "@/lib/types";
 
 // Always three teams of 7; with fewer players some teams get 6.
 const TEAM_COUNT = 3;
 const FULL_TEAM = 7;
-
-interface StoredResult {
-  key: string;
-  teams: string[][];
-}
 
 export default function TodayPage() {
   const { group } = useApp();
@@ -28,31 +24,84 @@ export default function TodayPage() {
 }
 
 function Today({ groupId }: { groupId: string }) {
-  const { players, playersLoading } = useApp();
-  const attendanceKey = `kohot:attendance:${groupId}`;
-  const resultKey = `kohot:result:${groupId}`;
+  const { players, playersLoading, repo, toast, ask } = useApp();
+  const keys = draftKeys(groupId);
 
-  const [selected, setSelectedState] = useState<Set<string>>(() => new Set(readStored<string[]>(attendanceKey, [])));
-  const [result, setResultState] = useState<StoredResult | null>(() => readStored<StoredResult | null>(resultKey, null));
+  const [selected, setSelectedState] = useState<Set<string>>(() => new Set(readStored<string[]>(keys.attendance, [])));
+  const [result, setResultState] = useState<StoredResult | null>(() => readStored<StoredResult | null>(keys.result, null));
+  const [game, setGameState] = useState<DraftGame>(() => readDraftGame(groupId));
   const [view, setView] = useState<"pick" | "teams">(() => (result ? "teams" : "pick"));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(() => (game.gameId ? "saved" : "idle"));
+  // Set by user changes to the teams or the date; the effect below then saves the game to history.
+  const dirty = useRef(false);
 
   const setSelected = (next: Set<string>) => {
     setSelectedState(next);
-    writeStored(attendanceKey, [...next]);
+    writeStored(keys.attendance, [...next]);
   };
   const setResult = (next: StoredResult | null) => {
     setResultState(next);
-    writeStored(resultKey, next);
+    writeStored(keys.result, next);
+    dirty.current = Boolean(next);
+  };
+  const setGame = (next: DraftGame) => {
+    setGameState(next);
+    writeStored(keys.game, next);
   };
 
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const comingPlayers = useMemo(() => players.filter((p) => selected.has(p.id)), [players, selected]);
+  const teams = useMemo(
+    () => result?.teams.map((ids) => ids.map((id) => byId.get(id)).filter((p): p is Player => Boolean(p))) ?? null,
+    [result, byId],
+  );
+
+  // Every split is saved to history automatically, as one game per draft.
+  useEffect(() => {
+    if (!dirty.current || !teams) return;
+    dirty.current = false;
+    const timer = setTimeout(() => {
+      setSaveState("saving");
+      repo
+        .saveGame(groupId, { id: game.gameId, played_on: game.date, teams: toSavedTeams(teams) })
+        .then((saved) => {
+          if (saved.id !== game.gameId) setGame({ date: game.date, gameId: saved.id });
+          setSaveState("saved");
+        })
+        .catch((e: Error) => {
+          setSaveState("idle");
+          toast(e.message);
+        });
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teams, game.date]);
 
   const generate = (avoidKey?: string) => {
     const res = balanceTeams(comingPlayers, TEAM_COUNT, { avoidKey });
     setResult({ key: res.key, teams: res.teams.map((t) => t.players.map((p) => p.id)) });
     setView("teams");
     window.scrollTo({ top: 0 });
+  };
+
+  const changeDate = (date: string) => {
+    if (!date) return;
+    setGame({ ...game, date });
+    dirty.current = Boolean(result);
+  };
+
+  const newGame = async () => {
+    const ok = await ask({
+      title: "להתחיל משחק חדש?",
+      message: game.gameId ? "המשחק הנוכחי כבר שמור בהיסטוריה." : "רשימת היום והכוחות הנוכחיים יתאפסו.",
+      confirmLabel: "משחק חדש",
+    });
+    if (!ok) return;
+    setSelected(new Set());
+    setResult(null);
+    setGame({ date: todayIso(), gameId: null });
+    setSaveState("idle");
+    setView("pick");
   };
 
   if (playersLoading && players.length === 0) {
@@ -63,27 +112,73 @@ function Today({ groupId }: { groupId: string }) {
     );
   }
 
-  if (view === "teams" && result) {
-    const teams = result.teams.map((ids) => ids.map((id) => byId.get(id)).filter((p): p is Player => Boolean(p)));
+  const header = (
+    <GameHeader game={game} saveState={result ? saveState : "idle"} onDate={changeDate} onNew={newGame} />
+  );
+
+  if (view === "teams" && result && teams) {
     return (
-      <TeamsView
-        teams={teams}
-        onReshuffle={() => generate(result.key)}
-        onBack={() => setView("pick")}
-        onChange={(next) => setResult({ key: "", teams: next.map((t) => t.map((p) => p.id)) })}
-        canReshuffle={comingPlayers.length >= 2}
-      />
+      <>
+        {header}
+        <TeamsView
+          teams={teams}
+          title={gameTitle(game.date)}
+          onReshuffle={() => generate(result.key)}
+          onBack={() => setView("pick")}
+          onChange={(next) => setResult({ key: "", teams: next.map((t) => t.map((p) => p.id)) })}
+          canReshuffle={comingPlayers.length >= 2}
+        />
+      </>
     );
   }
 
   return (
-    <PickView
-      selected={selected}
-      setSelected={setSelected}
-      onGenerate={() => generate(result?.key)}
-      hasResult={Boolean(result)}
-      onShowResult={() => setView("teams")}
-    />
+    <>
+      {header}
+      <PickView
+        selected={selected}
+        setSelected={setSelected}
+        onGenerate={() => generate(result?.key)}
+        hasResult={Boolean(result)}
+        onShowResult={() => setView("teams")}
+      />
+    </>
+  );
+}
+
+/** The game being prepared: its day and date, save status, and a way to start the next one. */
+function GameHeader({
+  game,
+  saveState,
+  onDate,
+  onNew,
+}: {
+  game: DraftGame;
+  saveState: "idle" | "saving" | "saved";
+  onDate(date: string): void;
+  onNew(): void;
+}) {
+  return (
+    <div className="mb-4 flex items-center gap-3 rounded-2xl bg-emerald-800 px-4 py-3 text-white shadow-sm">
+      <label className="relative min-w-0 flex-1 cursor-pointer">
+        <span className="block text-xs text-emerald-200">
+          משחק{saveState === "saving" ? " · שומר…" : saveState === "saved" ? " · ✓ נשמר בהיסטוריה" : ""}
+        </span>
+        <span className="block text-lg leading-tight font-black whitespace-nowrap">
+          {gameTitle(game.date)} <span className="text-sm text-emerald-200">▾</span>
+        </span>
+        <input
+          type="date"
+          value={game.date}
+          onChange={(e) => onDate(e.target.value)}
+          className="absolute inset-0 opacity-0"
+          aria-label="תאריך המשחק"
+        />
+      </label>
+      <button onClick={onNew} className="shrink-0 rounded-xl bg-white/15 px-3 py-2 text-sm font-bold active:bg-white/25">
+        + משחק חדש
+      </button>
+    </div>
   );
 }
 
@@ -301,32 +396,27 @@ function RosterSheet({
 
 function TeamsView({
   teams,
+  title,
   onReshuffle,
   onBack,
   onChange,
   canReshuffle,
 }: {
   teams: Player[][];
+  title: string;
   onReshuffle(): void;
   onBack(): void;
   onChange(teams: Player[][]): void;
   canReshuffle: boolean;
 }) {
-  const { group, repo, toast } = useApp();
+  const { toast } = useApp();
   const [picked, setPicked] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const summaries = teams.map(summarizeTeam);
   const averages = summaries.map((s) => s.average);
   const avgGap = averages.length ? Math.max(...averages) - Math.min(...averages) : 0;
 
-  const saved = (): SavedTeam[] =>
-    teams.map((players, i) => ({
-      name: teamStyle(i).name,
-      color: teamStyle(i).emoji,
-      total: summaries[i].total,
-      players: players.map(({ id, name, rating, positions }) => ({ id, name, rating, positions })),
-    }));
+  const text = () => shareText(toSavedTeams(teams), title);
 
   const tapPlayer = (id: string) => {
     if (!picked || picked === id) {
@@ -348,16 +438,15 @@ function TeamsView({
   };
 
   const share = async () => {
-    const text = shareText(saved());
     if (navigator.share) {
       try {
-        await navigator.share({ text });
+        await navigator.share({ text: text() });
         return;
       } catch {
         // cancelled or unsupported; fall back to WhatsApp link
       }
     }
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(text())}`, "_blank");
   };
 
   return (
@@ -383,33 +472,15 @@ function TeamsView({
       <TeamBoard teams={teams} picked={picked} onTap={tapPlayer} onChange={onChange} />
 
       <div className="pb-safe fixed inset-x-0 bottom-16 z-20 border-t border-zinc-200 bg-white/95 px-4 pt-3 backdrop-blur">
-        <div className="mx-auto grid max-w-lg grid-cols-3 gap-2">
-          <button className={`${btn.primary} col-span-3`} onClick={onReshuffle} disabled={!canReshuffle}>
+        <div className="mx-auto grid max-w-lg grid-cols-2 gap-2">
+          <button className={`${btn.primary} col-span-2`} onClick={onReshuffle} disabled={!canReshuffle}>
             🎲 ערבוב מחדש
           </button>
           <button className={btn.secondary} onClick={share}>
             📤 שיתוף
           </button>
-          <button
-            className={btn.secondary}
-            onClick={() => navigator.clipboard?.writeText(shareText(saved())).then(() => toast("הועתק ✓"))}
-          >
+          <button className={btn.secondary} onClick={() => navigator.clipboard?.writeText(text()).then(() => toast("הועתק ✓"))}>
             📄 העתקה
-          </button>
-          <button
-            className={btn.secondary}
-            disabled={saving}
-            onClick={() => {
-              if (!group) return;
-              setSaving(true);
-              repo
-                .saveGame(group.id, saved())
-                .then(() => toast("המשחק נשמר בהיסטוריה ✓"))
-                .catch((e: Error) => toast(e.message))
-                .finally(() => setSaving(false));
-            }}
-          >
-            💾 שמירה
           </button>
         </div>
       </div>

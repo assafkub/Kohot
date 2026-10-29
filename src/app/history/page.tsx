@@ -3,13 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "@/components/AppProvider";
 import { btn, RatingBadge, Spinner } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { gameTitle, openGameAsDraft } from "@/lib/draft";
 import { shareText, teamStyle } from "@/lib/teams";
-import { formatRating, type Game } from "@/lib/types";
+import { formatRating, type Game, type SavedTeam } from "@/lib/types";
+
+/** Saved games keep their own team emoji, so older games show their original colors. */
+function teamEmoji(team: SavedTeam, index: number): string {
+  return team.color && team.color.length <= 2 ? team.color : teamStyle(index).emoji;
+}
 
 export default function HistoryPage() {
   const { group, repo, toast, ask } = useApp();
   const [games, setGames] = useState<Game[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const router = useRouter();
 
   const load = useCallback(() => {
     if (!group) return;
@@ -26,7 +34,7 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">משחקים שמורים</h1>
+      <h1 className="text-2xl font-black">היסטוריית משחקים</h1>
       {games === null ? (
         <div className="flex justify-center py-10">
           <Spinner />
@@ -34,22 +42,19 @@ export default function HistoryPage() {
       ) : games.length === 0 ? (
         <div className="rounded-3xl bg-white p-8 text-center text-zinc-500">
           <div className="text-4xl">📋</div>
-          <p className="mt-2">אחרי שמחלקים קבוצות, לחצו &quot;שמירה&quot; והמשחק יופיע כאן.</p>
+          <p className="mt-2">כל חלוקה לכוחות נשמרת כאן אוטומטית, לפי תאריך המשחק.</p>
         </div>
       ) : (
         <ul className="space-y-2">
           {games.map((g) => {
             const open = openId === g.id;
-            const date = new Date(g.played_on);
             return (
               <li key={g.id} className="overflow-hidden rounded-3xl bg-white shadow-sm">
                 <button className="flex w-full items-center justify-between px-4 py-3 text-start" onClick={() => setOpenId(open ? null : g.id)}>
                   <span>
-                    <span className="block font-bold">
-                      {date.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "numeric" })}
-                    </span>
+                    <span className="block font-bold">⚽ {gameTitle(g.played_on)}</span>
                     <span className="text-sm text-zinc-500">
-                      {g.teams.map((t, i) => `${teamStyle(i).emoji} ${formatRating(t.total)}`).join("  ")}
+                      {g.teams.map((t, i) => `${teamEmoji(t, i)} ${formatRating(t.total)}`).join("  ")}
                     </span>
                   </span>
                   <span className="text-zinc-400">{open ? "▲" : "▼"}</span>
@@ -59,7 +64,7 @@ export default function HistoryPage() {
                     {g.teams.map((t, i) => (
                       <div key={i}>
                         <h3 className="mb-1 font-bold">
-                          {teamStyle(i).emoji} {t.name} ({formatRating(t.total)})
+                          {teamEmoji(t, i)} {t.name} ({formatRating(t.total)})
                         </h3>
                         <ul className="flex flex-wrap gap-1.5">
                           {t.players.map((p) => (
@@ -73,7 +78,17 @@ export default function HistoryPage() {
                     <div className="flex gap-2">
                       <button
                         className={btn.secondary}
-                        onClick={() => navigator.clipboard?.writeText(shareText(g.teams, date)).then(() => toast("הועתק ✓"))}
+                        onClick={() => {
+                          if (!group) return;
+                          openGameAsDraft(group.id, g);
+                          router.push("/");
+                        }}
+                      >
+                        ✎ פתיחה ועריכה
+                      </button>
+                      <button
+                        className={btn.secondary}
+                        onClick={() => navigator.clipboard?.writeText(shareText(g.teams, gameTitle(g.played_on))).then(() => toast("הועתק ✓"))}
                       >
                         📄 העתקה
                       </button>

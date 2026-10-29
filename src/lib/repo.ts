@@ -2,6 +2,12 @@ import { getSupabase } from "./supabase";
 import { normalizeName } from "./parseList";
 import type { Game, Group, Player, PlayerInput, SavedTeam } from "./types";
 
+export interface GameInput {
+  id: string | null;
+  played_on: string;
+  teams: SavedTeam[];
+}
+
 export type PlayerPatch = Partial<Pick<Player, "name" | "rating" | "positions" | "active">>;
 
 export interface Repo {
@@ -13,7 +19,8 @@ export interface Repo {
   addPlayers(groupId: string, inputs: PlayerInput[]): Promise<Player[]>;
   updatePlayer(id: string, patch: PlayerPatch): Promise<Player>;
   deletePlayers(ids: string[]): Promise<void>;
-  saveGame(groupId: string, teams: SavedTeam[]): Promise<void>;
+  /** Creates the game, or updates it when `id` is given and still exists. */
+  saveGame(groupId: string, game: GameInput): Promise<Game>;
   listGames(groupId: string): Promise<Game[]>;
   deleteGame(id: string): Promise<void>;
 }
@@ -68,17 +75,25 @@ export const supabaseRepo: Repo = {
     const { error } = await getSupabase().from("players").delete().in("id", ids);
     if (error) throw friendlyError(error);
   },
-  async saveGame(groupId, teams) {
-    const { error } = await getSupabase().from("games").insert({ group_id: groupId, teams, played_on: today() });
+  async saveGame(groupId, { id, played_on, teams }) {
+    const games = getSupabase().from("games");
+    if (id) {
+      const { data, error } = await games.update({ played_on, teams }).eq("id", id).select("*");
+      if (error) throw friendlyError(error);
+      if (data.length) return data[0] as Game;
+    }
+    const { data, error } = await games.insert({ group_id: groupId, played_on, teams }).select("*").single();
     if (error) throw friendlyError(error);
+    return data as Game;
   },
   async listGames(groupId) {
     const { data, error } = await getSupabase()
       .from("games")
       .select("*")
       .eq("group_id", groupId)
+      .order("played_on", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(100);
     if (error) throw friendlyError(error);
     return data as Game[];
   },
@@ -88,10 +103,6 @@ export const supabaseRepo: Repo = {
   },
 };
 
-function today(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 // ---- Local demo mode: everything lives in localStorage of this browser. ----
 
@@ -191,13 +202,22 @@ export const localRepo: Repo = {
       db.players = db.players.filter((p) => !ids.includes(p.id));
     });
   },
-  async saveGame(groupId, teams) {
-    mutate((db) => {
-      db.games.unshift({ id: uid(), group_id: groupId, teams, played_on: today(), created_at: new Date().toISOString() });
+  async saveGame(groupId, { id, played_on, teams }) {
+    return mutate((db) => {
+      const existing = id ? db.games.find((g) => g.id === id) : undefined;
+      if (existing) {
+        Object.assign(existing, { played_on, teams });
+        return { ...existing };
+      }
+      const game = { id: uid(), group_id: groupId, teams, played_on, created_at: new Date().toISOString() };
+      db.games.unshift(game);
+      return game;
     });
   },
   async listGames(groupId) {
-    return loadDb().games.filter((g) => g.group_id === groupId);
+    return loadDb()
+      .games.filter((g) => g.group_id === groupId)
+      .sort((a, b) => b.played_on.localeCompare(a.played_on) || b.created_at.localeCompare(a.created_at));
   },
   async deleteGame(id) {
     mutate((db) => {

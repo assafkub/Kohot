@@ -1,3 +1,4 @@
+import type { BalancePlayer } from "./balance";
 import { formatRating, POSITION_EMOJI, POSITIONS, type SavedTeam } from "./types";
 
 export const TEAM_STYLES = [
@@ -10,8 +11,18 @@ export function teamStyle(index: number) {
   return TEAM_STYLES[index % TEAM_STYLES.length];
 }
 
-export function shareText(teams: SavedTeam[], date = new Date()): string {
-  const lines = [`⚽ הכוחות להיום – ${date.getDate()}.${date.getMonth() + 1}`];
+export function toSavedTeams(teams: BalancePlayer[][]): SavedTeam[] {
+  return teams.map((players, i) => ({
+    name: teamStyle(i).name,
+    color: teamStyle(i).emoji,
+    total: players.reduce((s, p) => s + p.rating, 0),
+    players: players.map(({ id, name, rating, positions }) => ({ id, name, rating, positions })),
+  }));
+}
+
+/** WhatsApp message with the teams; `title` is the game's name, e.g. "רביעי 29.10". */
+export function shareText(teams: SavedTeam[], title: string): string {
+  const lines = [`⚽ הכוחות – ${title}`];
   teams.forEach((team, i) => {
     lines.push("", `${teamStyle(i).emoji} *${team.name}* (${formatRating(team.total)})`);
     team.players.forEach((p) => {
