@@ -1,6 +1,6 @@
 import { getSupabase } from "./supabase";
 import { normalizeName } from "./parseList";
-import type { Game, Group, Player, PlayerInput, SavedTeam } from "./types";
+import type { Game, Group, Member, Player, PlayerInput, PublishedGame, SavedTeam } from "./types";
 
 export interface GameInput {
   id: string | null;
@@ -12,6 +12,8 @@ export interface GameInput {
 export type PlayerPatch = Partial<Pick<Player, "name" | "rating" | "positions" | "active">>;
 
 export interface Repo {
+  /** Only the super admin creates groups. */
+  isSuperAdmin(): Promise<boolean>;
   listGroups(): Promise<Group[]>;
   createGroup(name: string): Promise<Group>;
   joinGroup(code: string): Promise<Group>;
@@ -25,6 +27,13 @@ export interface Repo {
   listGames(groupId: string): Promise<Game[]>;
   deleteGame(id: string): Promise<void>;
   deleteAllGames(groupId: string): Promise<void>;
+  setGamePublished(id: string, published: boolean): Promise<Game>;
+  /** What players see: published games, names and colors only. */
+  listPublishedGames(groupId: string): Promise<PublishedGame[]>;
+  listMembers(groupId: string): Promise<Member[]>;
+  setMemberRole(groupId: string, userId: string, role: Member["role"]): Promise<void>;
+  removeMember(groupId: string, userId: string): Promise<void>;
+  rotateInviteCode(groupId: string): Promise<string>;
 }
 
 function toPlayer(row: Record<string, unknown>): Player {
@@ -34,6 +43,8 @@ function toPlayer(row: Record<string, unknown>): Player {
 function friendlyError(error: { message: string; code?: string }): Error {
   if (error.code === "23505") return new Error("כבר יש שחקן בשם הזה");
   if (error.message.includes("invalid invite code")) return new Error("קוד הצטרפות לא נמצא");
+  if (error.message.includes("only super admin")) return new Error("רק מנהל המערכת יכול ליצור קבוצה");
+  if (error.message.includes("not allowed")) return new Error("אין לך הרשאה לפעולה הזו");
   return new Error(error.message);
 }
 
@@ -50,11 +61,23 @@ async function saveGameRow(groupId: string, { id, played_on, title, teams }: Gam
   return data as Game;
 }
 
+/** Postgres "function does not exist": the roles migration was not run yet. */
+const isMissingFunction = (error: { code?: string }) => error.code === "PGRST202" || error.code === "42883";
+
 export const supabaseRepo: Repo = {
+  async isSuperAdmin() {
+    const { data, error } = await getSupabase().rpc("whoami");
+    if (error) return false;
+    return Boolean((data as { super_admin?: boolean } | null)?.super_admin);
+  },
   async listGroups() {
-    const { data, error } = await getSupabase().from("groups").select("id, name, invite_code").order("created_at");
-    if (error) throw friendlyError(error);
-    return data;
+    const { data, error } = await getSupabase().rpc("my_groups");
+    if (!error) return data as Group[];
+    if (!isMissingFunction(error)) throw friendlyError(error);
+    // Before the roles migration every member manages the group.
+    const old = await getSupabase().from("groups").select("id, name, invite_code").order("created_at");
+    if (old.error) throw friendlyError(old.error);
+    return old.data.map((g) => ({ ...g, role: "manager" as const }));
   },
   async createGroup(name) {
     const { data, error } = await getSupabase().rpc("create_group", { p_name: name });
@@ -118,6 +141,49 @@ export const supabaseRepo: Repo = {
     const { error } = await getSupabase().from("games").delete().eq("group_id", groupId);
     if (error) throw friendlyError(error);
   },
+  async setGamePublished(id, published) {
+    const { data, error } = await getSupabase()
+      .from("games")
+      .update({ published_at: published ? new Date().toISOString() : null })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw friendlyError(error);
+    return data as Game;
+  },
+  async listPublishedGames(groupId) {
+    const { data, error } = await getSupabase().rpc("published_games", { p_group: groupId });
+    if (error) throw friendlyError(error);
+    return data as PublishedGame[];
+  },
+  async listMembers(groupId) {
+    const { data, error } = await getSupabase()
+      .from("group_members")
+      .select("user_id, role, display_name, email")
+      .eq("group_id", groupId)
+      .order("joined_at");
+    if (error) throw friendlyError(error);
+    return data as Member[];
+  },
+  async setMemberRole(groupId, userId, role) {
+    const { error } = await getSupabase().rpc("set_member_role", { p_group: groupId, p_user: userId, p_role: role });
+    if (error) throw friendlyError(error);
+  },
+  async removeMember(groupId, userId) {
+    const { data, error } = await getSupabase()
+      .from("group_members")
+      .delete()
+      .eq("group_id", groupId)
+      .eq("user_id", userId)
+      .select("user_id");
+    if (error) throw friendlyError(error);
+    if (!data.length) throw new Error("אין לך הרשאה להוציא את החבר הזה");
+  },
+  async rotateInviteCode(groupId) {
+    const { data, error } = await getSupabase().rpc("rotate_invite_code", { p_group: groupId });
+    if (error) throw friendlyError(error);
+    return data as string;
+  },
 };
 
 
@@ -154,13 +220,17 @@ function mutate<T>(fn: (db: LocalDb) => T): T {
 
 const uid = () => crypto.randomUUID();
 
+// In demo mode you are the super admin of everything.
 export const localRepo: Repo = {
+  async isSuperAdmin() {
+    return true;
+  },
   async listGroups() {
-    return loadDb().groups;
+    return loadDb().groups.map((g) => ({ ...g, role: "admin" as const }));
   },
   async createGroup(name) {
     return mutate((db) => {
-      const g = { id: uid(), name: name.trim(), invite_code: "LOCAL" };
+      const g: Group = { id: uid(), name: name.trim(), invite_code: "LOCAL", role: "admin" };
       db.groups.push(g);
       return g;
     });
@@ -245,5 +315,36 @@ export const localRepo: Repo = {
     mutate((db) => {
       db.games = db.games.filter((g) => g.group_id !== groupId);
     });
+  },
+  async setGamePublished(id, published) {
+    return mutate((db) => {
+      const g = db.games.find((x) => x.id === id);
+      if (!g) throw new Error("המשחק לא נמצא");
+      g.published_at = published ? new Date().toISOString() : null;
+      return { ...g };
+    });
+  },
+  async listPublishedGames(groupId) {
+    return (await localRepo.listGames(groupId))
+      .filter((g) => g.published_at)
+      .map((g) => ({
+        id: g.id,
+        played_on: g.played_on,
+        title: g.title,
+        published_at: g.published_at!,
+        teams: g.teams.map((t) => ({ name: t.name, color: t.color, players: t.players.map((p) => ({ name: p.name })) })),
+      }));
+  },
+  async listMembers() {
+    return [];
+  },
+  async setMemberRole() {
+    throw new Error("ניהול חברים זמין רק אחרי חיבור ל-Supabase");
+  },
+  async removeMember() {
+    throw new Error("ניהול חברים זמין רק אחרי חיבור ל-Supabase");
+  },
+  async rotateInviteCode() {
+    return "LOCAL";
   },
 };

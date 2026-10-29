@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { User } from "@supabase/supabase-js";
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 import { localRepo, supabaseRepo, type PlayerPatch, type Repo } from "@/lib/repo";
-import type { Group, Player, PlayerInput } from "@/lib/types";
+import { canManage, type Group, type Player, type PlayerInput } from "@/lib/types";
 import { readStored, writeStored } from "@/lib/storage";
 
 type Status = "loading" | "signed-out" | "no-group" | "ready";
@@ -16,12 +16,18 @@ interface AppState {
   repo: Repo;
   groups: Group[];
   group: Group | null;
+  /** The super admin sees every group and is the only one who creates groups. */
+  superAdmin: boolean;
+  /** Manager or super admin of the current group: sees ratings and edits everything. */
+  manager: boolean;
   players: Player[];
   playersLoading: boolean;
   selectGroup(id: string): void;
   createGroup(name: string): Promise<void>;
   joinGroup(code: string): Promise<void>;
   renameGroup(name: string): Promise<void>;
+  rotateInviteCode(): Promise<void>;
+  leaveGroup(): Promise<void>;
   addPlayers(inputs: PlayerInput[]): Promise<Player[]>;
   updatePlayer(id: string, patch: PlayerPatch): Promise<void>;
   deletePlayer(id: string): Promise<void>;
@@ -58,6 +64,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [superAdmin, setSuperAdmin] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loadedGroupId, setLoadedGroupId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -108,6 +115,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!authReady || !signedIn) return;
     let cancelled = false;
+    repo.isSuperAdmin().then((v) => !cancelled && setSuperAdmin(v));
     repo
       .listGroups()
       .then((list) => {
@@ -125,9 +133,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [authReady, signedIn, repo, toast]);
 
-  // Players of the current group; "loading" until the list for this group has arrived.
+  const group = groups?.find((g) => g.id === groupId) ?? null;
+  const manager = canManage(group);
+
+  // Players of the current group; "loading" until the list for this group has arrived. Players can't read the roster.
   useEffect(() => {
-    if (!groupId) return;
+    if (!groupId || !manager) return;
     let cancelled = false;
     repo
       .listPlayers(groupId)
@@ -140,11 +151,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [groupId, repo, toast]);
+  }, [groupId, manager, repo, toast]);
 
-  const playersLoading = Boolean(groupId) && loadedGroupId !== groupId;
-
-  const group = groups?.find((g) => g.id === groupId) ?? null;
+  const playersLoading = manager && Boolean(groupId) && loadedGroupId !== groupId;
 
   const status: Status = !authReady
     ? "loading"
@@ -169,6 +178,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       repo,
       groups: groups ?? [],
       group,
+      superAdmin,
+      manager,
       players,
       playersLoading,
       toast,
@@ -190,6 +201,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       async renameGroup(name) {
         await repo.renameGroup(requireGroup(), name);
         setGroups((list) => list?.map((g) => (g.id === groupId ? { ...g, name } : g)) ?? list);
+      },
+      async rotateInviteCode() {
+        const invite_code = await repo.rotateInviteCode(requireGroup());
+        setGroups((list) => list?.map((g) => (g.id === groupId ? { ...g, invite_code } : g)) ?? list);
+      },
+      async leaveGroup() {
+        if (!user) return;
+        await repo.removeMember(requireGroup(), user.id);
+        await loadGroups();
       },
       async addPlayers(inputs) {
         const created = await repo.addPlayers(requireGroup(), inputs);
@@ -219,10 +239,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (mode === "supabase") await getSupabase().auth.signOut();
         setGroups(null);
         setGroupId(null);
+        setSuperAdmin(false);
         setPlayers([]);
       },
     };
-  }, [status, mode, user, repo, groups, group, groupId, players, playersLoading, toast, ask, loadGroups]);
+  }, [status, mode, user, repo, groups, group, superAdmin, manager, groupId, players, playersLoading, toast, ask, loadGroups]);
 
   return (
     <AppContext.Provider value={value}>

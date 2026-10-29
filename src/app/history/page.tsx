@@ -80,7 +80,10 @@ export default function HistoryPage() {
               <li key={g.id} className="overflow-hidden rounded-3xl bg-white shadow-sm">
                 <button className="flex w-full items-center justify-between px-4 py-3 text-start" onClick={() => setOpenId(open ? null : g.id)}>
                   <span>
-                    <span className="block font-bold">⚽ {gameTitle(g)}</span>
+                    <span className="block font-bold">
+                      ⚽ {gameTitle(g)}
+                      {g.published_at && <span className="ms-2 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">פורסם</span>}
+                    </span>
                     <span className="text-sm text-zinc-500">
                       {g.teams.map((t, i) => `${teamEmoji(t, i)} ${formatRating(t.total)}`).join("  ")}
                     </span>
@@ -103,7 +106,21 @@ export default function HistoryPage() {
                         </ul>
                       </div>
                     ))}
-                    <div className="flex gap-2">
+                    <button
+                      className={`${g.published_at ? btn.secondary : btn.primary} w-full`}
+                      onClick={() =>
+                        repo
+                          .setGamePublished(g.id, !g.published_at)
+                          .then((updated) => {
+                            setGames((list) => list?.map((x) => (x.id === g.id ? { ...x, published_at: updated.published_at } : x)) ?? list);
+                            toast(updated.published_at ? "פורסם לשחקנים ✓" : "הפרסום בוטל");
+                          })
+                          .catch((e: Error) => toast(e.message))
+                      }
+                    >
+                      {g.published_at ? "🙈 ביטול פרסום" : "📢 פרסום לשחקנים"}
+                    </button>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         className={btn.secondary}
                         onClick={() => {
