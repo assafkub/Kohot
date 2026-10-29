@@ -31,8 +31,12 @@ const COLUMN_GAP = 5;
  * Each column is padded to its longest name plus a few spaces, so the columns roughly line up.
  * No ratings or averages, those stay in the app.
  */
+export function shareColorWord(team: SavedTeam, index: number): string {
+  return COLOR_WORD[team.color] ?? (team.name || teamStyle(index).name);
+}
+
 export function shareText(teams: SavedTeam[]): string {
-  const columns = teams.map((t, i) => [COLOR_WORD[t.color] ?? t.name ?? teamStyle(i).name, ...t.players.map((p) => p.name)]);
+  const columns = teams.map((t, i) => [shareColorWord(t, i), ...t.players.map((p) => p.name)]);
   const widths = columns.map((col) => Math.max(...col.map((cell) => cell.length)));
   const rows = Math.max(0, ...columns.map((col) => col.length));
   const lines: string[] = [];

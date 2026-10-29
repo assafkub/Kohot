@@ -22,6 +22,7 @@ import {
   type StoredResult,
 } from "@/lib/draft";
 import { shareText, toSavedTeams } from "@/lib/teams";
+import { teamsImage } from "@/lib/shareImage";
 import type { Player } from "@/lib/types";
 
 // Always three teams of 7; with fewer players some teams get 6.
@@ -533,7 +534,10 @@ function TeamsView({
     setPicked(null);
   };
 
-  const share = async () => {
+  const [shareOpen, setShareOpen] = useState(false);
+
+  const shareAsText = async () => {
+    setShareOpen(false);
     if (navigator.share) {
       try {
         await navigator.share({ text: text() });
@@ -543,6 +547,33 @@ function TeamsView({
       }
     }
     window.open(`https://wa.me/?text=${encodeURIComponent(text())}`, "_blank");
+  };
+
+  // A picture of the teams side by side; where pictures can't be shared, it is downloaded instead.
+  const shareAsImage = async () => {
+    setShareOpen(false);
+    let file: File;
+    try {
+      file = new File([await teamsImage(toSavedTeams(teams, colors))], "kohot.png", { type: "image/png" });
+    } catch (e) {
+      toast((e as Error).message);
+      return;
+    }
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+      } catch {
+        // cancelled
+      }
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "kohot.png";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("התמונה ירדה למכשיר");
   };
 
   return (
@@ -575,7 +606,7 @@ function TeamsView({
           <button className={btn.primary} onClick={onSave} disabled={saving || saveState === "saved"}>
             {saving ? "שומר…" : saveState === "saved" ? "✓ בהיסטוריה" : saveState === "changed" ? "💾 עדכון" : "💾 להיסטוריה"}
           </button>
-          <button className={btn.secondary} onClick={share}>
+          <button className={btn.secondary} onClick={() => setShareOpen(true)}>
             📤 שיתוף
           </button>
           <button className={btn.secondary} onClick={() => navigator.clipboard?.writeText(text()).then(() => toast("הועתק ✓"))}>
@@ -584,6 +615,17 @@ function TeamsView({
         </div>
       </div>
       <div className="h-36" />
+
+      <Sheet open={shareOpen} onClose={() => setShareOpen(false)} title="שיתוף הכוחות">
+        <div className="grid grid-cols-2 gap-2">
+          <button className={btn.secondary} onClick={shareAsImage}>
+            🖼️ כתמונה
+          </button>
+          <button className={btn.secondary} onClick={shareAsText}>
+            📝 כטקסט
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }
