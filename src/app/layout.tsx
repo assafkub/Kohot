@@ -17,6 +17,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: "#047857",
+  // The app is designed light; this asks browsers not to auto-darken it, which washed out the rating badges.
+  colorScheme: "only light",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

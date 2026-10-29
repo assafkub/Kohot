@@ -56,11 +56,15 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   );
 }
 
+/**
+ * Solid badges with white digits (contrast 5:1 or more), so ratings stay readable on any background,
+ * including phones that force a dark theme on the page.
+ */
 export function ratingColor(rating: number): string {
-  if (rating >= 6) return "bg-emerald-600 text-white";
-  if (rating >= 4.5) return "bg-emerald-100 text-emerald-900";
-  if (rating >= 3) return "bg-amber-100 text-amber-900";
-  return "bg-zinc-200 text-zinc-700";
+  if (rating >= 6) return "bg-emerald-700 text-white";
+  if (rating >= 4.5) return "bg-sky-700 text-white";
+  if (rating >= 3) return "bg-amber-700 text-white";
+  return "bg-slate-600 text-white";
 }
 
 export function RatingBadge({ rating }: { rating: number }) {

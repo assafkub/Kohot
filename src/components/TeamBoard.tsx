@@ -283,7 +283,7 @@ function PlayerRow({ player, overlay }: { player: Player; overlay?: boolean }) {
         {main && <span className="me-0.5 text-[11px]">{POSITION_EMOJI[main]}</span>}
         {player.name}
       </span>
-      <span className={`shrink-0 rounded-md px-1 text-xs leading-5 font-bold tabular-nums ${ratingColor(player.rating)}`}>
+      <span className={`min-w-7 shrink-0 rounded-md px-1 text-center text-sm leading-6 font-bold tabular-nums ${ratingColor(player.rating)}`}>
         {formatRating(player.rating)}
       </span>
     </div>
