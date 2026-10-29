@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { balanceTeams, teamSizes, type BalancePlayer } from "./balance";
 import { findSimilarPlayers, fullerName, matchPlayer, parsePlayerList } from "./parseList";
+import { shareText } from "./teams";
 import type { Position } from "./types";
 
 function seeded(seed: number) {
@@ -203,5 +204,18 @@ describe("matchPlayer / findSimilarPlayers", () => {
     expect(fullerName("אורי ש", "אורי שפירא")).toBe("אורי שפירא");
     expect(fullerName("אבי", "אבי חדפ")).toBeNull();
     expect(fullerName("דור ב", "דור א")).toBeNull();
+  });
+});
+
+describe("shareText", () => {
+  it("lays the teams side by side with color names and no ratings", () => {
+    const team = (color: string, names: string[]) => ({
+      name: "",
+      color,
+      total: 0,
+      players: names.map((name) => ({ id: name, name, rating: 4, positions: [] })),
+    });
+    const text = shareText([team("⚫", ["אסי", "טל"]), team("⚪", ["אוראל", "ירון"]), team("🔵", ["רועי"])]);
+    expect(text).toBe("שחור\tלבן\tכחול\nאסי\tאוראל\tרועי\nטל\tירון");
   });
 });

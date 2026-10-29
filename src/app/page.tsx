@@ -158,7 +158,6 @@ function Today({ groupId }: { groupId: string }) {
         {header}
         <TeamsView
           teams={teams}
-          title={gameTitle({ title: game.title, played_on: game.date })}
           onReshuffle={() => generate(result.key)}
           onBack={() => setView("pick")}
           colors={colors}
@@ -482,7 +481,6 @@ function RosterSheet({
 
 function TeamsView({
   teams,
-  title,
   onReshuffle,
   onBack,
   colors,
@@ -494,7 +492,6 @@ function TeamsView({
   onSave,
 }: {
   teams: Player[][];
-  title: string;
   onReshuffle(): void;
   onBack(): void;
   colors: number[];
@@ -512,7 +509,7 @@ function TeamsView({
   const averages = summaries.map((s) => s.average);
   const avgGap = averages.length ? Math.max(...averages) - Math.min(...averages) : 0;
 
-  const text = () => shareText(toSavedTeams(teams, colors), title);
+  const text = () => shareText(toSavedTeams(teams, colors));
 
   const tapPlayer = (id: string) => {
     if (!picked || picked === id) {

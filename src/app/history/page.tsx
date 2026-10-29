@@ -116,7 +116,7 @@ export default function HistoryPage() {
                       </button>
                       <button
                         className={btn.secondary}
-                        onClick={() => navigator.clipboard?.writeText(shareText(g.teams, gameTitle(g))).then(() => toast("הועתק ✓"))}
+                        onClick={() => navigator.clipboard?.writeText(shareText(g.teams)).then(() => toast("הועתק ✓"))}
                       >
                         📄 העתקה
                       </button>

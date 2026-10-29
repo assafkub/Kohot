@@ -1,5 +1,5 @@
 import type { BalancePlayer } from "./balance";
-import { formatRating, POSITION_EMOJI, POSITIONS, type SavedTeam } from "./types";
+import { POSITION_EMOJI, POSITIONS, type SavedTeam } from "./types";
 
 export const TEAM_STYLES = [
   { name: "שחורים", emoji: "⚫", swatch: "bg-zinc-900", header: "bg-zinc-900 text-white" },
@@ -21,16 +21,17 @@ export function toSavedTeams(teams: BalancePlayer[][], colors?: number[]): Saved
   }));
 }
 
-/** WhatsApp message with the teams; `title` is the game's name, e.g. "רביעי 29.10". */
-export function shareText(teams: SavedTeam[], title: string): string {
-  const lines = [`⚽ הכוחות – ${title}`];
-  teams.forEach((team, i) => {
-    lines.push("", `${team.color || teamStyle(i).emoji} *${team.name}* (${formatRating(team.total)})`);
-    team.players.forEach((p) => {
-      const main = p.positions[0];
-      lines.push(`• ${p.name}${main ? ` ${POSITION_EMOJI[main]}` : ""}`);
-    });
-  });
+const COLOR_WORD: Record<string, string> = { "⚫": "שחור", "🔵": "כחול", "⚪": "לבן" };
+
+/**
+ * WhatsApp message with the teams side by side, as the group writes it: a row of colors, then one row per place,
+ * names separated by tabs. No ratings or averages, those stay in the app.
+ */
+export function shareText(teams: SavedTeam[]): string {
+  const header = teams.map((t, i) => COLOR_WORD[t.color] ?? t.name ?? teamStyle(i).name);
+  const rows = Math.max(0, ...teams.map((t) => t.players.length));
+  const lines = [header.join("\t")];
+  for (let r = 0; r < rows; r++) lines.push(teams.map((t) => t.players[r]?.name ?? "").join("\t").trimEnd());
   return lines.join("\n");
 }
 
