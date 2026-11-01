@@ -104,6 +104,7 @@ export default function HistoryPage() {
                             {versions.length > 1 && <span className="font-normal text-zinc-500"> · גרסה {index + 1}</span>}
                             {g.published_at && <span className="ms-2 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">פורסם</span>}
                           </span>
+                          {g.created_by_name && <span className="block text-xs text-zinc-500">👤 {g.created_by_name}</span>}
                           <span className="text-sm text-zinc-500">
                             {g.teams.map((t, i) => `${teamEmoji(t, i)} ${formatRating(t.total)}`).join("  ")}
                           </span>
