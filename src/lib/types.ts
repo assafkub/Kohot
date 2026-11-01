@@ -93,6 +93,8 @@ export interface Game {
   created_at: string;
   /** Set when players can see the game. */
   published_at?: string | null;
+  /** The manager who made this version. */
+  created_by_name?: string | null;
 }
 
 export function clampRating(value: number): number {
