@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   closestCorners,
   DndContext,
@@ -60,6 +60,12 @@ export function TeamBoard({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [pickedHead, setPickedHead] = useState<number | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  // Where each player sat after the last render (page coordinates), to animate players that changed team.
+  const lastSpots = useRef(new Map<string, { left: number; top: number; team: number }>());
+  // A drag already shows the move, so the swap that ends it is not animated again.
+  const skipAnimation = useRef(false);
+  const lineup = ids.map((t) => t.join(",")).join("|");
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -100,6 +106,7 @@ export function TeamBoard({
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     reset();
+    skipAnimation.current = true;
     if (!over) return;
     const a = String(active.id);
     const o = String(over.id);
@@ -125,6 +132,29 @@ export function TeamBoard({
     onChange(result);
   };
 
+  useLayoutEffect(() => {
+    const root = boardRef.current;
+    if (!root) return;
+    const spots = new Map<string, { left: number; top: number; team: number }>();
+    const moved: { el: HTMLElement; from: { left: number; top: number }; rect: DOMRect }[] = [];
+    root.querySelectorAll<HTMLElement>("[data-player]").forEach((el) => {
+      const id = el.dataset.player!;
+      const rect = el.getBoundingClientRect();
+      const spot = { left: rect.left + window.scrollX, top: rect.top + window.scrollY, team: findTeam(id) };
+      const before = lastSpots.current.get(id);
+      if (before && before.team !== spot.team) moved.push({ el, from: before, rect });
+      spots.set(id, spot);
+    });
+    lastSpots.current = spots;
+    const skip = skipAnimation.current;
+    skipAnimation.current = false;
+    if (skip || moved.length === 0 || moved.length > 4) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    for (const m of moved) flyFromSpot(m.el, m.from, m.rect);
+    // findTeam reads the current lineup; running only when the lineup changes is intended.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineup]);
+
   const active = activeId ? byId.get(activeId) : undefined;
 
   return (
@@ -136,7 +166,7 @@ export function TeamBoard({
       onDragEnd={onDragEnd}
       onDragCancel={reset}
     >
-      <div className="grid grid-cols-3 items-start gap-1.5">
+      <div ref={boardRef} className="grid grid-cols-3 items-start gap-1.5">
         {ids.map((teamIds, i) => (
           <TeamCard
             key={i}
@@ -265,6 +295,7 @@ function SortablePlayer({
       {...listeners}
       onClick={() => onTap(player.id)}
       aria-label={player.name}
+      data-player={player.id}
       className={`cursor-grab select-none ${dragging ? "opacity-30" : ""} ${swapTarget ? "bg-emerald-100 ring-2 ring-emerald-500 ring-inset" : picked === player.id ? "bg-amber-100" : "active:bg-zinc-50"}`}
     >
       <PlayerRow player={player} />
@@ -309,7 +340,8 @@ function PlayerRow({ player, overlay }: { player: SavedTeamPlayer; overlay?: boo
   return (
     <div
       dir="rtl"
-      className={`flex items-center gap-1 px-1.5 py-1.5 ${overlay ? "rounded-lg bg-white/85 shadow-xl ring-2 ring-emerald-500" : ""}`}
+      // A fixed height (room for two lines), so a column keeps its size whoever is in it.
+      className={`flex h-10 items-center gap-1 px-1.5 ${overlay ? "rounded-lg bg-white/85 shadow-xl ring-2 ring-emerald-500" : ""}`}
     >
       <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-4 font-semibold break-words">
         {main && <span className="me-0.5 text-[11px]">{POSITION_EMOJI[main]}</span>}
@@ -320,4 +352,48 @@ function PlayerRow({ player, overlay }: { player: SavedTeamPlayer; overlay?: boo
       </span>
     </div>
   );
+}
+
+/**
+ * Shows a player that just changed team flying from its old spot to the new one: a copy of the row moves across
+ * (the columns clip their content, so the row itself can't leave its column), then the row flashes in place.
+ */
+function flyFromSpot(el: HTMLElement, from: { left: number; top: number }, rect: DOMRect) {
+  const ghost = el.cloneNode(true) as HTMLElement;
+  ghost.removeAttribute("data-player");
+  Object.assign(ghost.style, {
+    position: "fixed",
+    left: `${from.left - window.scrollX}px`,
+    top: `${from.top - window.scrollY}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    margin: "0",
+    zIndex: "50",
+    pointerEvents: "none",
+    listStyle: "none",
+    background: "white",
+    borderRadius: "8px",
+    boxShadow: "0 8px 20px rgba(0,0,0,.18), 0 0 0 2px #10b981",
+    transform: "none",
+    transition: "none",
+  });
+  document.body.appendChild(ghost);
+  el.style.visibility = "hidden";
+  const dx = rect.left - (from.left - window.scrollX);
+  const dy = rect.top - (from.top - window.scrollY);
+  const flight = ghost.animate(
+    [
+      { transform: "translate(0, 0) scale(1)" },
+      { transform: `translate(${dx / 2}px, ${dy / 2 - 12}px) scale(1.08)`, offset: 0.5 },
+      { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+    ],
+    { duration: 480, easing: "ease-in-out" },
+  );
+  const land = () => {
+    ghost.remove();
+    el.style.visibility = "";
+    el.animate([{ backgroundColor: "#a7f3d0" }, { backgroundColor: "transparent" }], { duration: 900, easing: "ease-out" });
+  };
+  flight.onfinish = land;
+  flight.oncancel = land;
 }

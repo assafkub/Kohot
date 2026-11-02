@@ -621,27 +621,31 @@ function TeamsView({
         </button>
       </header>
 
-      {pickedPlayer ? (
-        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <span className="min-w-0 flex-1">
-            נבחר <b>{pickedPlayer.name}</b>. לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם, או:
+      {/* Same height in both states, so tapping a player never pushes the teams down. */}
+      <div
+        className={`flex h-14 items-center gap-2 rounded-xl px-3 text-xs leading-4 ${pickedPlayer ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}
+      >
+        {pickedPlayer ? (
+          <>
+            <span className="line-clamp-3 min-w-0 flex-1">
+              <b>{pickedPlayer.name}</b>: לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם
+            </span>
+            <button
+              className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-zinc-800 shadow-sm ring-1 ring-amber-200 active:bg-amber-100"
+              onClick={() => {
+                setEditing(pickedPlayer);
+                setPicked(null);
+              }}
+            >
+              ✎ עריכה
+            </button>
+          </>
+        ) : (
+          <span className="line-clamp-3">
+            לחיצה על שחקן: החלפה או עריכה. לחיצה ארוכה וגרירה על שחקן מקבוצה אחרת: החלפה. כותרת קבוצה: החלפת צבע.
           </span>
-          <button
-            className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-zinc-800 shadow-sm ring-1 ring-amber-200 active:bg-amber-100"
-            onClick={() => {
-              setEditing(pickedPlayer);
-              setPicked(null);
-            }}
-          >
-            ✎ עריכה
-          </button>
-        </div>
-      ) : (
-        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם. החלפת צבע: אותו דבר עם כותרת הקבוצה.
-          עריכת שחקן: לחיצה עליו ואז ✎ עריכה.
-        </p>
-      )}
+        )}
+      </div>
 
       <TeamBoard teams={teams} colors={colors} picked={picked} onTap={tapPlayer} onChange={onChange} onColors={onColors} />
 
