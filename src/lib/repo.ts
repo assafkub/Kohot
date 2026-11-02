@@ -26,6 +26,7 @@ export interface Repo {
   saveGame(groupId: string, game: GameInput): Promise<Game>;
   listGames(groupId: string): Promise<Game[]>;
   deleteGame(id: string): Promise<void>;
+  deleteGames(ids: string[]): Promise<void>;
   deleteAllGames(groupId: string): Promise<void>;
   /** Publishing a version unpublishes the other versions of the same day. */
   setGamePublished(id: string, published: boolean): Promise<Game>;
@@ -138,6 +139,11 @@ export const supabaseRepo: Repo = {
   },
   async deleteGame(id) {
     const { error } = await getSupabase().from("games").delete().eq("id", id);
+    if (error) throw friendlyError(error);
+  },
+  async deleteGames(ids) {
+    if (ids.length === 0) return;
+    const { error } = await getSupabase().from("games").delete().in("id", ids);
     if (error) throw friendlyError(error);
   },
   async deleteAllGames(groupId) {
@@ -321,6 +327,12 @@ export const localRepo: Repo = {
   async deleteGame(id) {
     mutate((db) => {
       db.games = db.games.filter((g) => g.id !== id);
+    });
+  },
+  async deleteGames(ids) {
+    const drop = new Set(ids);
+    mutate((db) => {
+      db.games = db.games.filter((g) => !drop.has(g.id));
     });
   },
   async deleteAllGames(groupId) {

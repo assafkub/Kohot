@@ -28,7 +28,39 @@ export default function HistoryPage() {
   const { group, repo, toast, ask } = useApp();
   const [games, setGames] = useState<Game[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  /** Multi-select mode: null when off, otherwise the ids picked for deletion. */
+  const [selected, setSelected] = useState<Set<string> | null>(null);
   const router = useRouter();
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const deleteSelected = () => {
+    if (!group || !selected || selected.size === 0) return;
+    const ids = [...selected];
+    ask({
+      title: ids.length === 1 ? "למחוק את המשחק שנבחר?" : `למחוק ${ids.length} משחקים?`,
+      message: "המשחקים שסימנתם יימחקו לצמיתות. השחקנים נשארים.",
+      confirmLabel: "מחיקה",
+      danger: true,
+    }).then((ok) => {
+      if (!ok) return;
+      repo
+        .deleteGames(ids)
+        .then(() => {
+          ids.forEach((id) => forgetSavedGame(group.id, id));
+          setSelected(null);
+          toast(ids.length === 1 ? "המשחק נמחק" : `${ids.length} משחקים נמחקו`);
+          load();
+        })
+        .catch((e: Error) => toast(e.message));
+    });
+  };
 
   const load = useCallback(() => {
     if (!group) return;
@@ -47,7 +79,17 @@ export default function HistoryPage() {
     <div className="space-y-4">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-black">היסטוריית משחקים</h1>
-        {games && games.length > 0 && (
+        {games && games.length > 0 && !selected && (
+          <div className="flex items-center gap-1">
+          <button
+            className="rounded-xl px-3 py-1.5 text-sm font-semibold text-emerald-800 active:bg-emerald-50"
+            onClick={() => {
+              setOpenId(null);
+              setSelected(new Set());
+            }}
+          >
+            ☑ בחירה
+          </button>
           <button
             className="rounded-xl px-3 py-1.5 text-sm font-semibold text-red-600 active:bg-red-50"
             onClick={() => {
@@ -72,8 +114,32 @@ export default function HistoryPage() {
           >
             🗑 מחיקת הכל
           </button>
+          </div>
         )}
       </header>
+      {games && selected && (
+        <div className="sticky top-[53px] z-20 flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-md ring-1 ring-zinc-200">
+          <span className="flex-1 text-sm font-semibold">
+            {selected.size === 0 ? "סמנו משחקים למחיקה" : `${selected.size} נבחרו`}
+          </span>
+          <button
+            className="rounded-xl px-2 py-1.5 text-sm font-semibold text-emerald-800 active:bg-emerald-50"
+            onClick={() => setSelected(selected.size === games.length ? new Set() : new Set(games.map((g) => g.id)))}
+          >
+            {selected.size === games.length ? "ניקוי" : "בחירת הכל"}
+          </button>
+          <button
+            className="rounded-xl bg-red-600 px-3 py-1.5 text-sm font-bold text-white active:bg-red-700 disabled:opacity-40"
+            disabled={selected.size === 0}
+            onClick={deleteSelected}
+          >
+            🗑 מחיקה
+          </button>
+          <button className="rounded-xl px-2 py-1.5 text-sm font-semibold text-zinc-600 active:bg-zinc-100" onClick={() => setSelected(null)}>
+            ביטול
+          </button>
+        </div>
+      )}
       {games === null ? (
         <div className="flex justify-center py-10">
           <Spinner />
@@ -94,11 +160,28 @@ export default function HistoryPage() {
               )}
               <ul className="space-y-2">
                 {versions.map((g, index) => {
-                  const open = openId === g.id;
+                  const open = !selected && openId === g.id;
+                  const checked = selected?.has(g.id) ?? false;
                   return (
-                    <li key={g.id} className="overflow-hidden rounded-3xl bg-white shadow-sm">
-                      <button className="flex w-full items-center justify-between px-4 py-3 text-start" onClick={() => setOpenId(open ? null : g.id)}>
-                        <span>
+                    <li
+                      key={g.id}
+                      className={`overflow-hidden rounded-3xl bg-white shadow-sm ${checked ? "ring-2 ring-red-500" : ""}`}
+                    >
+                      <button
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-start"
+                        aria-pressed={selected ? checked : undefined}
+                        onClick={() => (selected ? toggleSelected(g.id) : setOpenId(open ? null : g.id))}
+                      >
+                        {selected && (
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 text-sm font-bold ${
+                              checked ? "border-red-600 bg-red-600 text-white" : "border-zinc-300 bg-white"
+                            }`}
+                          >
+                            {checked && "✓"}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
                           <span className="block font-bold">
                             ⚽ {gameTitle(g)}
                             {versions.length > 1 && <span className="font-normal text-zinc-500"> · גרסה {index + 1}</span>}
@@ -109,7 +192,7 @@ export default function HistoryPage() {
                             {g.teams.map((t, i) => `${teamEmoji(t, i)} ${formatRating(t.total)}`).join("  ")}
                           </span>
                         </span>
-                        <span className="text-zinc-400">{open ? "▲" : "▼"}</span>
+                        {!selected && <span className="text-zinc-400">{open ? "▲" : "▼"}</span>}
                       </button>
                       {open && (
                         <div className="space-y-3 border-t border-zinc-100 bg-zinc-50 px-2 py-3">
