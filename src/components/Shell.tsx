@@ -34,8 +34,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
       <TopBar />
-      {/* Players see only the published teams (and settings); the database refuses them the rest anyway. */}
-      <main className="flex-1 px-4 pt-3 pb-28">{manager || pathname === "/settings" ? children : <PublishedGames />}</main>
+      {/* Players see only the published teams, settings and the sketch page (no data); the database refuses them the rest anyway. */}
+      <main className="flex-1 px-4 pt-3 pb-28">{manager || pathname === "/settings" || pathname === "/sketch" ? children : <PublishedGames />}</main>
       <BottomNav />
     </div>
   );
@@ -81,6 +81,9 @@ function TopBar() {
               </div>
               <Link href="/settings" onClick={() => setOpen(false)} className="block px-4 py-3 text-sm active:bg-zinc-50">
                 ⚙️ הגדרות וחבורה
+              </Link>
+              <Link href="/sketch" onClick={() => setOpen(false)} className="block px-4 py-3 text-sm active:bg-zinc-50">
+                🖼️ סקיצה לתמונה
               </Link>
               {mode === "supabase" && (
                 <button

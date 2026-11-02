@@ -1,12 +1,12 @@
+import { sketchColor } from "./sketch";
 import { shareColorWord } from "./teams";
-import type { SavedTeam } from "./types";
 
-// Colors of each team header in the shared picture, by the team's emoji.
-const HEADER: Record<string, { bg: string; fg: string; border?: string }> = {
-  "⚫": { bg: "#18181b", fg: "#ffffff" },
-  "🔵": { bg: "#2563eb", fg: "#ffffff" },
-  "⚪": { bg: "#ffffff", fg: "#18181b", border: "#d4d4d8" },
-};
+/** What the picture needs of a team: its color emoji (header colors come from SKETCH_COLORS) and the names. */
+interface ImageTeam {
+  name: string;
+  color: string;
+  players: { name: string }[];
+}
 
 const COL = 340;
 const GAP = 16;
@@ -25,7 +25,10 @@ function fit(ctx: CanvasRenderingContext2D, text: string, width: number): string
  * The teams as a picture: one column per team, side by side, first team on the right as on the screen,
  * the color on top and the players' names below. Nothing else: no ratings, icons, numbers or title.
  */
-export async function teamsImage(teams: SavedTeam[]): Promise<Blob> {
+export async function teamsImage(
+  teams: ImageTeam[],
+  label: (team: ImageTeam, index: number) => string = shareColorWord,
+): Promise<Blob> {
   await document.fonts?.ready;
   const font = getComputedStyle(document.body).fontFamily || "sans-serif";
   const rows = Math.max(0, ...teams.map((t) => t.players.length));
@@ -48,7 +51,7 @@ export async function teamsImage(teams: SavedTeam[]): Promise<Blob> {
   teams.forEach((team, i) => {
     const x = width - PAD - (i + 1) * COL - i * GAP;
     const top = PAD;
-    const style = HEADER[team.color] ?? HEADER["⚪"];
+    const style: { bg: string; fg: string; border?: string } = sketchColor(team.color);
 
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
@@ -67,7 +70,7 @@ export async function teamsImage(teams: SavedTeam[]): Promise<Blob> {
 
     ctx.fillStyle = style.fg;
     ctx.font = `900 32px ${font}`;
-    ctx.fillText(shareColorWord(team, i), x + COL / 2, top + HEAD_H / 2);
+    ctx.fillText(fit(ctx, label(team, i), COL - 32), x + COL / 2, top + HEAD_H / 2);
 
     ctx.font = `600 27px ${font}`;
     team.players.forEach((p, r) => {
@@ -84,4 +87,31 @@ export async function teamsImage(teams: SavedTeam[]): Promise<Blob> {
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("לא הצלחתי ליצור תמונה"))), "image/png"),
   );
+}
+
+/**
+ * Hands the picture to the phone's share sheet (WhatsApp and so on); where pictures can't be shared, it is downloaded.
+ * Returns what happened, so the caller can say "downloaded".
+ */
+export async function shareOrDownload(blob: Blob, filename = "kohot.png"): Promise<"shared" | "downloaded" | "cancelled"> {
+  const file = new File([blob], filename, { type: "image/png" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return "shared";
+    } catch {
+      return "cancelled";
+    }
+  }
+  downloadBlob(blob, filename);
+  return "downloaded";
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

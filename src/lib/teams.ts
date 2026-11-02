@@ -31,7 +31,7 @@ const COLUMN_GAP = 5;
  * Each column is padded to its longest name plus a few spaces, so the columns roughly line up.
  * No ratings or averages, those stay in the app.
  */
-export function shareColorWord(team: SavedTeam, index: number): string {
+export function shareColorWord(team: Pick<SavedTeam, "name" | "color">, index: number): string {
   return COLOR_WORD[team.color] ?? (team.name || teamStyle(index).name);
 }
 

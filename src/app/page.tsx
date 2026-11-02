@@ -22,7 +22,7 @@ import {
   type StoredResult,
 } from "@/lib/draft";
 import { shareText, toSavedTeams } from "@/lib/teams";
-import { teamsImage } from "@/lib/shareImage";
+import { shareOrDownload, teamsImage } from "@/lib/shareImage";
 import type { Player } from "@/lib/types";
 
 // Always three teams of 7; with fewer players some teams get 6.
@@ -583,28 +583,11 @@ function TeamsView({
   // A picture of the teams side by side; where pictures can't be shared, it is downloaded instead.
   const shareAsImage = async () => {
     setShareOpen(false);
-    let file: File;
     try {
-      file = new File([await teamsImage(toSavedTeams(teams, colors))], "kohot.png", { type: "image/png" });
+      if ((await shareOrDownload(await teamsImage(toSavedTeams(teams, colors)))) === "downloaded") toast("התמונה ירדה למכשיר");
     } catch (e) {
       toast((e as Error).message);
-      return;
     }
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file] });
-      } catch {
-        // cancelled
-      }
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "kohot.png";
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast("התמונה ירדה למכשיר");
   };
 
   return (
