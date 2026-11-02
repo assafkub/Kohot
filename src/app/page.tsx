@@ -532,6 +532,9 @@ function TeamsView({
 }) {
   const { toast } = useApp();
   const [picked, setPicked] = useState<string | null>(null);
+  // Editing a player from here uses the same form as the players screen; the teams update with the saved values.
+  const [editing, setEditing] = useState<Player | null>(null);
+  const pickedPlayer = picked ? teams.flat().find((p) => p.id === picked) : undefined;
 
   const summaries = teams.map(summarizeTeam);
   const averages = summaries.map((s) => s.average);
@@ -618,11 +621,27 @@ function TeamsView({
         </button>
       </header>
 
-      <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-        {picked
-          ? "עכשיו לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם"
-          : "החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם. החלפת צבע: אותו דבר עם כותרת הקבוצה."}
-      </p>
+      {pickedPlayer ? (
+        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <span className="min-w-0 flex-1">
+            נבחר <b>{pickedPlayer.name}</b>. לחצו על שחקן בקבוצה אחרת כדי להחליף ביניהם, או:
+          </span>
+          <button
+            className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-zinc-800 shadow-sm ring-1 ring-amber-200 active:bg-amber-100"
+            onClick={() => {
+              setEditing(pickedPlayer);
+              setPicked(null);
+            }}
+          >
+            ✎ עריכה
+          </button>
+        </div>
+      ) : (
+        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          החלפת שחקנים: לחיצה ארוכה על שחקן וגרירה על שחקן מקבוצה אחרת, או לחיצה על שניהם. החלפת צבע: אותו דבר עם כותרת הקבוצה.
+          עריכת שחקן: לחיצה עליו ואז ✎ עריכה.
+        </p>
+      )}
 
       <TeamBoard teams={teams} colors={colors} picked={picked} onTap={tapPlayer} onChange={onChange} onColors={onColors} />
 
@@ -672,6 +691,8 @@ function TeamsView({
           <p className="text-xs text-zinc-500">כל הגרסאות של היום נשמרות בהיסטוריה, ורק אחת מהן מפורסמת לשחקנים.</p>
         </div>
       </Sheet>
+
+      <PlayerFormSheet open={Boolean(editing)} player={editing} onClose={() => setEditing(null)} />
 
       <Sheet open={shareOpen} onClose={() => setShareOpen(false)} title="שיתוף הכוחות">
         <div className="grid grid-cols-2 gap-2">
